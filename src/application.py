@@ -5,11 +5,14 @@ from fastapi import FastAPI
 import sys
 import logging
 from pathlib import Path
-from sqlalchemy import text
 
-from src.api.routers.routers import init_routers
-from src.db import async_session_factory_null_pull
-
+from src.api import dependencies
+from src.clients.http_client import TaskServiceClient
+from src.config import settings
+from src.api.routers.user_routers import router as user_router
+from src.api.routers.task_routers import router as task_router
+from src.api.routers.health_routers import router as health_router
+from src.utils.circuit_breaker import CircuitBreaker
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -25,16 +28,24 @@ def get_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        try:
-            async with async_session_factory_null_pull() as session:
-                await session.execute(text("SELECT 1"))
-                logging.info("Подключение к базе данных успешно проверено")
-        except Exception as e:
-            logging.critical(
-                "Не удалось подключиться к базе данных при старте", exc_info=True
+        async with TaskServiceClient(
+            base_url=settings.TASK_SERVICE_URL,
+            timeout=30,
+        ) as client:
+            dependencies._task_client = client
+            logging.info(f"✅ HTTP Client ready: {client.base_url}")
+
+            dependencies._task_service_cb = CircuitBreaker(
+                name="task_service",
+                failure_threshold=3,
+                recovery_timeout=30,
             )
-            raise RuntimeError(f"Ошибка подключения к БД: {e}") from e
-        yield
+            logging.info("✅ CircuitBreaker ready: task_service")
+
+            yield
+            dependencies._task_client = None
+            dependencies._task_service_cb = None
+
 
     app = FastAPI(
         docs_url='/docs',
@@ -51,6 +62,8 @@ def get_app() -> FastAPI:
         allow_headers=['*'],
     )
 
-    init_routers(app_=app)
+    app.include_router(user_router)
+    app.include_router(task_router)
+    app.include_router(health_router)
 
     return app

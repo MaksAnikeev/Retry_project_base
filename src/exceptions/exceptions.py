@@ -11,26 +11,8 @@ class ObjectNotFoundException(CustomException):
     detail = "Объект с такими параметрами не найден"
 
 
-class UserNotFoundException(CustomException):
-    detail = "Пользователь с таким ид не найден"
-
-
-class TaskNotFoundException(CustomException):
-    detail = "Задача с таким ид не найден"
-
-
 class AlreadyExistedException(CustomException):
     detail = "Объект с такими параметрами уже существует"
-
-
-class TooLongParameterException(CustomException):
-    detail = "Вводимый параметр недопустимо длинный"
-
-
-class TooManyObjectsException(CustomException):
-    detail = (
-        "По данным параметрам найдено несколько объектов, уточните параметры поиска"
-    )
 
 
 class NotAllNecessaryParamsException(CustomException):
@@ -39,18 +21,6 @@ class NotAllNecessaryParamsException(CustomException):
 
 class NotAllowedParameterException(CustomException):
     detail = "Указаны неверные параметры для изменения"
-
-
-class IncorrectPasswordException(CustomException):
-    detail = "Введен некорректный пароль"
-
-
-class WrongAccessToken(CustomException):
-    detail = "Некорректный токен."
-
-
-class TimeoutAccessToken(CustomException):
-    detail = "Время действия токена истекло."
 
 
 class EmptyAttributesException(CustomException):
@@ -66,6 +36,9 @@ class CustomHTTPException(HTTPException):
     def __init__(self):
         super().__init__(status_code=self.status_code, detail=self.detail)
 
+class ObjectNotFoundHTTPException(CustomHTTPException):
+    status_code = 404
+    detail = "Объект не найден"
 
 class UserNotFoundHTTPException(CustomHTTPException):
     status_code = 404
@@ -74,7 +47,6 @@ class UserNotFoundHTTPException(CustomHTTPException):
 class UserTaskNotFoundHTTPException(CustomHTTPException):
     status_code = 404
     detail = "У пользователя не найдена задача с таким ид"
-
 
 class TaskNotFoundHTTPException(CustomHTTPException):
     status_code = 404
@@ -94,39 +66,6 @@ class UserAlreadyExistedHTTPException(CustomHTTPException):
 class UserNotExistedHTTPException(CustomHTTPException):
     status_code = 401
     detail = "Пользователь с таким email не найден. Необходима регистрация."
-
-
-class IncorrectPasswordHTTPException(CustomHTTPException):
-    status_code = 401
-    detail = "Неверно указан логин или пароль"
-
-
-class NotAccessTokenHTTPException(CustomHTTPException):
-    status_code = 401
-    detail = "Необходимо залогиниться"
-
-
-class WrongAccessTokenHTTPException(CustomHTTPException):
-    status_code = 401
-    detail = "Необходимо залогиниться"
-
-
-class TimeoutAccessTokenHTTPException(CustomHTTPException):
-    status_code = 401
-    detail = "Время действия токена истекло. Необходимо залогиниться"
-
-
-class TooLongParameterHTTPException(CustomHTTPException):
-    status_code = 400
-    detail = "Вводимый параметр недопустимо длинный, проверьте правильность ввода всех параметров ИД"
-
-
-class TooManyObjectsHTTPException(CustomHTTPException):
-    status_code = 422
-    detail = (
-        "Поиск осуществляется не по уникальным параметрам,"
-        " в результате по данным параметрам найдено несколько объектов, уточните параметры поиска"
-    )
 
 
 class NotAllowedParameterHTTPException(CustomHTTPException):
@@ -150,3 +89,13 @@ class NotAnyAttributeHTTPException(CustomHTTPException):
 class EmptyRequestBodyHTTPException(CustomHTTPException):
     status_code = 400
     detail = "Не передано ни одного параметра"
+
+
+class TaskServiceErrorHTTPException(CustomHTTPException):
+    status_code = 502
+    detail = "Сервис задач недоступен или вернул ошибку"
+
+
+class CircuitBreakerError(Exception):
+    """Исключение, когда цепь разомкнута"""
+    pass

@@ -18,9 +18,7 @@ class Settings(BaseSettings):
     DB_PASS: str
     DB_NAME: str
 
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int
+    TASK_SERVICE_URL: str
 
     @property
     def DATABASE_URL_asyncpg(self):

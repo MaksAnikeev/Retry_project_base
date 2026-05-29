@@ -1,6 +1,6 @@
 from pydantic import BaseModel, model_validator, ConfigDict
 
-from src.exceptions import NotAnyAttributeHTTPException, EmptyRequestBodyHTTPException
+from src.exceptions.exceptions import NotAnyAttributeHTTPException, EmptyRequestBodyHTTPException
 
 
 class ChangeBaseSchema(BaseModel):
