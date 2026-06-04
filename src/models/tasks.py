@@ -14,7 +14,6 @@ if typing.TYPE_CHECKING:
 class TasksORM(Base):
     __tablename__ = "tasks"
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(100), unique=True)
     description: Mapped[str | None]

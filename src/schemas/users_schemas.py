@@ -42,5 +42,10 @@ class UserGetSchemas(BaseModel):
     is_active: bool = Field(..., description="Статус пользователя")
     is_deleted: bool = Field(..., description="Пользователь удален")
     created_at: datetime = Field(..., description="Дата регистрации пользователя")
-    updated_at: datetime = Field(
-        ..., description="Дата обновления информации о пользователе")
+    updated_at: datetime | None = Field(None, description="Дата обновления информации о пользователе")
+
+
+class UserResponse(BaseModel):
+    status: str = Field(default="OK", description="Статус операции")
+    description: str = Field(description="Описание результата")
+    user_info: UserGetSchemas = Field(description="Информация по юзеру")

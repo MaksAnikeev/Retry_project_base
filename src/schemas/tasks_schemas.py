@@ -16,19 +16,28 @@ class TaskRequestSchemas(ChangeBaseSchema):
 example_add_task = {
     "1": {
         "summary": "Задача 1",
-        "value": {
+        "value": [
+            {
             "title": "Купить бумагу",
             "description": "Заказать в офисмаге бумагу",
-            "finish_date": '2026-05-01',
+            "finish_date": '2026-05-21',
         },
+            {
+            "title": "Купить чернила",
+            "description": "Магазин напротив пойти и купить",
+            "finish_date": '2026-06-01',
+        },
+        ]
     },
     "2": {
         "summary": "Задача 2",
-        "value": {
+        "value": [
+            {
             "title": "Купить билеты",
             "description": "Заказать билеты в Тайланд",
             "finish_date": '2026-05-01',
         },
+        ]
     },
 }
 
@@ -78,3 +87,14 @@ class TaskAPIResponseSchemas(BaseModel):
     complexity: str = Field(..., description="Сложность выполняемой задачи")
     estimated_hours: float = Field(..., description="Время на выполнение задачи")
     priority: str = Field(..., description="Статус задачи")
+
+
+class TaskDeletedResponse(BaseModel):
+    status: str = Field(default="OK", description="Статус операции")
+    description: str = Field(description="Описание результата")
+    delete_task_info: TaskGetSchemas = Field(description="Информация по удаленной задачи")
+
+
+class TasksBulkCreatedResponse(BaseModel):
+    success_tasks: str = Field(description="Список успешно добавленных задач")
+    failed_tasks: str = Field(description="Список задач, которые не удалось добавить")

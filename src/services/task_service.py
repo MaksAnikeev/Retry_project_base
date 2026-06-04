@@ -1,16 +1,21 @@
+import logging
 import uuid
 
-from src.clients.http_client import TaskServiceClient
-from src.exceptions.exceptions import AlreadyExistedException, TaskAlreadyExistedHTTPException, \
-    ObjectNotFoundHTTPException
+from sqlalchemy.exc import IntegrityError
+from asyncpg import UniqueViolationError, ForeignKeyViolationError
+
+from src.clients.report_http_client import ReportServiceClient
+from src.exceptions import ObjectNotFoundException, AlreadyExistsException
 from src.repositories.task_rep import TasksRepository
 from src.repositories.user_rep import UsersRepository
 from src.schemas.tasks_schemas import (
     TaskGetSchemas,
     TaskRequestSchemas,
-    TaskCreateSchemas, TaskUserGetSchemas, TaskAPIRequestSchemas, TaskAPIResponseSchemas,
+    TaskCreateSchemas,
+    TaskUserGetSchemas,
+    TaskAPIRequestSchemas,
+    TaskAPIResponseSchemas,
 )
-from src.utils.circuit_breaker import CircuitBreaker
 from src.utils.retry_client import retry_standard
 
 
@@ -20,33 +25,37 @@ class TaskService:
         self,
         task_rep: TasksRepository,
         user_rep: UsersRepository,
-        http_client: TaskServiceClient,
-        circuit_breaker: CircuitBreaker | None = None,
+        http_client: ReportServiceClient,
     ) -> None:
         self.task_rep = task_rep
         self.user_rep = user_rep
         self.http_client = http_client
-        self.circuit_breaker = circuit_breaker
 
 
-    async def check_user_exists(self, user_id: uuid.UUID) -> bool:
+    async def check_user_exists(self, user_id: uuid.UUID) -> None:
         user = await self.user_rep.one_or_none(id=user_id)
         if not user:
-            raise ObjectNotFoundHTTPException
+            logging.warning(f"User with id {user_id} not found")
+            raise ObjectNotFoundException
 
-    async def check_task_exists(self, task_id: uuid.UUID) -> bool:
+    async def check_task_exists(self, task_id: uuid.UUID) -> None:
         task = await self.task_rep.one_or_none(id=task_id)
         if not task:
-            raise ObjectNotFoundHTTPException
+            logging.warning(f"Task with id {task_id} not found")
+            raise ObjectNotFoundException
+
+    async def check_title_exists(self, title: str) -> bool:
+        task = await self.task_rep.one_or_none(title=title)
+        return task
 
     async def get_all_with_parameters(self, user_id: uuid.UUID) -> list[TaskGetSchemas]:
         await self.check_user_exists(user_id=user_id)
-        tasks = await self.task_rep.get_all_with_parameters(user_id=user_id)
+        tasks = await self.task_rep.get_all_with_any_parameters(user_id=user_id)
         return tasks
 
     async def get_unrealized_tasks(self, user_id: uuid.UUID) -> list[TaskCreateSchemas]:
         await self.check_user_exists(user_id=user_id)
-        tasks = await self.task_rep.get_all_with_parameters(user_id=user_id, done=False)
+        tasks = await self.task_rep.get_all_with_any_parameters(user_id=user_id, done=False)
         return tasks
 
     async def get_one_or_none_with_relship(
@@ -57,53 +66,83 @@ class TaskService:
 
         await self.check_user_exists(user_id=user_id)
         await self.check_task_exists(task_id=task_id)
-        task= await self.task_rep.get_one_or_none_with_relship(id=task_id, user_id=user_id)
-        return task
-
-    async def get_report_with_retry(self, task_info: TaskAPIRequestSchemas) -> TaskAPIResponseSchemas:
-        """
-        Получить невыполненные задачи из внешнего сервиса с использованием retry и Circuit Breaker
-
-        Порядок вызова:
-        1. Circuit Breaker проверяет состояние
-        2. Если CLOSED/HALF_OPEN → выполняет запрос с retry
-        3. При успехе → сбрасывает счётчик ошибок
-        4. При ошибке → увеличивает счётчик, может открыть цепь
-        """
-        retryable_get_report = retry_standard(self.http_client.get_report)
-        return await self.circuit_breaker.call(
-            retryable_get_report,
-            task_info
-        )
+        task = await self.task_rep.get_one_or_none_with_relship(id=task_id, user_id=user_id)
+        return TaskUserGetSchemas.model_validate(task, from_attributes=True)
 
     async def add(
         self,
         user_id: uuid.UUID,
-        task_info: TaskRequestSchemas,
-    ) -> TaskGetSchemas:
+        tasks_info: list[TaskRequestSchemas],
+    ) -> dict:
         await self.check_user_exists(user_id=user_id)
 
-        task_id = uuid.uuid4()
-        task_api_info = TaskAPIRequestSchemas(
-            user_id=user_id,
-            task_id=task_id,
-            **task_info.model_dump()
-        )
-        report = await self.get_report_with_retry(task_api_info)
+        tasks_added = []
+        failed_tasks = []
 
-        full_data = {**task_info.model_dump(), **report.model_dump()}
-        task_create = TaskCreateSchemas(
-            id=task_id,
-            user_id=user_id,
-            **full_data,
-        )
+        for task_info in tasks_info:
+            try:
+                task = await self.check_title_exists(title=task_info.title)
+                if task:
+                    logging.warning(f"Task '{task_info.title}' already exists")
+                    raise AlreadyExistsException(detail=f"Task '{task_info.title}' already exists")
 
-        try:
-            task = await self.task_rep.add(task_create)
-        except AlreadyExistedException:
-            raise TaskAlreadyExistedHTTPException
-        await self.task_rep.commit()
-        return task
+                task_id = uuid.uuid4()
+                task_api_info = TaskAPIRequestSchemas(
+                    user_id=user_id,
+                    task_id=task_id,
+                    **task_info.model_dump()
+                )
+
+                report = await self.http_client.get_report(task_api_info)
+
+                full_data = {**task_info.model_dump(), **report.model_dump()}
+                task_create = TaskCreateSchemas(
+                    id=task_id,
+                    user_id=user_id,
+                    **full_data,
+                )
+                task = await self.task_rep.add(task_create)
+                await self.task_rep.commit()
+
+                tasks_added.append(task.title)
+
+            except IntegrityError as ex:
+                await self.task_rep.rollback()
+
+                if isinstance(ex.orig.__cause__, UniqueViolationError):
+                    logging.error(f"Unique violation for task '{task_info.title}'")
+                    failed_tasks.append({
+                        "title": task_info.title,
+                        "error": "Task with this title already exists"
+                    })
+                elif isinstance(ex.orig.__cause__, ForeignKeyViolationError):
+                    logging.error(f"Foreign key violation for task '{task_info.title}'")
+                    failed_tasks.append({
+                        "title": task_info.title,
+                        "error": "Referenced object not found"
+                    })
+                else:
+                    logging.error(f"Unknown integrity error: {ex}")
+                    failed_tasks.append({
+                        "title": task_info.title,
+                        "error": "Database integrity error"
+                    })
+                continue
+
+            except Exception as e:
+                await self.task_rep.rollback()
+                logging.error(f"{task_info.title} \n {str(e)}")
+                failed_tasks.append({
+                    "title": task_info.title,
+                    "error": str(e)
+                })
+                continue
+
+        return {
+            "added": tasks_added,
+            "failed_tasks": failed_tasks,
+        }
+
 
     async def delete(
         self,

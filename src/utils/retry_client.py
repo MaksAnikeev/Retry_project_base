@@ -4,6 +4,8 @@ from aiohttp import ClientConnectorError, ServerDisconnectedError, ClientConnect
 from asyncio import TimeoutError as AsyncTimeoutError
 from tenacity import retry, stop_after_attempt, retry_if_exception_type, wait_exponential_jitter
 
+from src.exceptions import ExternalServiceUnavailableException
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,6 +17,7 @@ NETWORK_EXCEPTIONS = (
     ClientConnectionError,
     ServerDisconnectedError,
     ClientOSError,
+    ExternalServiceUnavailableException,
 )
 
 retry_standard = retry(

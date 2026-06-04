@@ -13,10 +13,9 @@ if typing.TYPE_CHECKING:
 class UsersORM(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(), nullable=True)
     email: Mapped[str] = mapped_column(
-        String(200), nullable=False, unique=True, index=True)
+        String(200), nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean)
     is_deleted: Mapped[bool] = mapped_column(Boolean)
     hashed_password: Mapped[str] = mapped_column(String(200), nullable=False)
