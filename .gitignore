@@ -164,4 +164,3 @@ logs
 !tests/data_to_tests/mock_hotels.json
 !tests/data_to_tests/mock_rooms.json
 "docker images/"
-src/__pycache__

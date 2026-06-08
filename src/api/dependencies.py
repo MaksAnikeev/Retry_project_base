@@ -1,9 +1,9 @@
-from contextlib import asynccontextmanager
 from typing import Annotated
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from contextlib import asynccontextmanager
 
 from src.db import async_session_factory
 from src.repositories.task_rep import TasksRepository
@@ -16,8 +16,7 @@ from src.clients.report_http_client import ReportServiceClient
 
 _report_client: ReportServiceClient | None = None
 
-# ==================== Database ====================
-@asynccontextmanager
+
 async def get_session() -> AsyncGenerator[AsyncSession]:
     async with async_session_factory() as session:
         try:
