@@ -8,10 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.models.base import Base
 
 if typing.TYPE_CHECKING:
-    from src.models import UsersORM
+    from src.models import UserORM
 
 
-class TasksORM(Base):
+class TaskORM(Base):
     __tablename__ = "tasks"
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
@@ -23,4 +23,6 @@ class TasksORM(Base):
     estimated_hours: Mapped[float]
     priority: Mapped[str] = mapped_column(String(50))
 
-    user: Mapped["UsersORM"] = relationship(back_populates="tasks")
+    user: Mapped["UserORM"] = relationship("UserORM", back_populates="tasks")
+
+    model_config = {"from_attributes": True}

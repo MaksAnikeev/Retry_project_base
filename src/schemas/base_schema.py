@@ -1,4 +1,4 @@
-from pydantic import BaseModel, model_validator, ConfigDict
+from pydantic import BaseModel, model_validator, ConfigDict, Field
 
 from src.exceptions import AtLeastOneFieldRequiredException, EmptyRequestBodyException
 
@@ -15,3 +15,10 @@ class ChangeBaseSchema(BaseModel):
         if all(value is None or value == "" for value in self.model_dump().values()):
             raise AtLeastOneFieldRequiredException
         return self
+
+
+class PaginationParamsSchema(BaseModel):
+    page: int = Field(1, ge=1, description="Номер страницы")
+    per_page: int = Field(
+        20, ge=1, le=100, description="количество объектов на странице"
+    )

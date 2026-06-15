@@ -1,5 +1,7 @@
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
@@ -20,15 +22,16 @@ class Settings(BaseSettings):
 
     TASK_SERVICE_URL: str
 
-    @property
-    def DATABASE_URL_asyncpg(self):
-        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     @property
-    def DATABASE_URL_psycopg(self):
-        return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+    def DATABASE_URL_asyncpg(self) -> str:
+        user = quote_plus(self.DB_USER)
+        password = quote_plus(self.DB_PASS)
+        return f"postgresql+asyncpg://{user}:{password}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env")
 
 
-settings = Settings()  # type: ignore
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()

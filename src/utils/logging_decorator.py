@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import HTTPException
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 
@@ -50,13 +51,21 @@ def log(
     return decorator
 
 
-def _safe_repr(obj: Any, max_len: int = 200) -> str:
-    if isinstance(obj, dict):
-        safe = {
-            k: "***" if k.lower() in {"password", "token", "secret"} else v for k, v in obj.items()
-        }
-        repr_str = repr(safe)
-    else:
-        repr_str = repr(obj)
+def _safe_repr(obj: Any, max_len: int = 500) -> str:
+    SECRET_KEYS = {"password", "token", "secret", "hashed_password", "api_key", "authorization"}
 
+    def process(item: Any) -> Any:
+        if isinstance(item, BaseModel):
+            return process(item.model_dump())
+        elif isinstance(item, dict):
+            return {
+                k: "***" if k.lower() in SECRET_KEYS else process(v)
+                for k, v in item.items()
+            }
+        elif isinstance(item, (list, tuple)):
+            return [process(i) for i in item]
+        else:
+            return item
+    safe_obj = process(obj)
+    repr_str = repr(safe_obj)
     return repr_str[:max_len] + "..." if len(repr_str) > max_len else repr_str

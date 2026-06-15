@@ -18,6 +18,9 @@ class HealthDB:
                     timeout=HealthDB.HEALTH_CHECK_TIMEOUT
                 )
                 return True
-        except Exception:
-            logging.warning("Health check: Database connection failed")
+        except asyncio.TimeoutError:
+            logging.error(f"Health check: Database connection TIMEOUT after {HealthDB.HEALTH_CHECK_TIMEOUT}s")
+            return False
+        except Exception as e:
+            logging.error(f"Health check: Database connection failed - {type(e).__name__}: {e}")
             return False

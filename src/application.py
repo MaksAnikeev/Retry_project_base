@@ -7,16 +7,17 @@ import logging
 from pathlib import Path
 
 from src.api import dependencies
+from src.api.routers.routers import register_routers
 from src.clients.report_http_client import ReportServiceClient
-from src.config import settings
-from src.api.routers.task_user_routers import router as task_user_router
-from src.api.routers.health_routers import router as health_router
+from src.config import get_settings
 from src.exceptions import BaseDomainException
 from src.exceptions.handlers import domain_exception_handler
 
 sys.path.append(str(Path(__file__).parent.parent))
 
 logging.basicConfig(level=logging.INFO)
+
+settings = get_settings()
 
 
 def get_app() -> FastAPI:
@@ -52,8 +53,7 @@ def get_app() -> FastAPI:
         allow_headers=['*'],
     )
 
-    app.include_router(task_user_router)
-    app.include_router(health_router)
+    register_routers(app)
 
     app.add_exception_handler(BaseDomainException, domain_exception_handler)
 

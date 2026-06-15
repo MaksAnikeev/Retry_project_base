@@ -11,7 +11,7 @@ from src.utils.retry_client import retry_standard
 
 from src.utils.circuit_breaker import circuit_breaker_standard
 from src.exceptions import ExternalServiceUnavailableException
-from src.schemas.tasks_schemas import TaskAPIRequestSchemas, TaskAPIResponseSchemas
+from src.schemas.tasks_schemas import TaskAPIRequestSchema, TaskAPIResponseSchema
 
 
 class ReportServiceClient:
@@ -53,7 +53,7 @@ class ReportServiceClient:
 
     @circuit_breaker_standard
     @retry_standard
-    async def get_report(self, task_info: TaskAPIRequestSchemas) -> TaskAPIResponseSchemas:
+    async def get_report(self, task_info: TaskAPIRequestSchema) -> TaskAPIResponseSchema:
         session = await self.get_session()
         url = f"{self.base_url}/reports"
 
@@ -64,7 +64,7 @@ class ReportServiceClient:
                     raise ExternalServiceUnavailableException(
                         detail=f"External service returned {response.status}: {error_text[:100]}"
                     )
-                return TaskAPIResponseSchemas(**await response.json())
+                return TaskAPIResponseSchema(**await response.json())
 
         except (
                 ClientConnectorError,
