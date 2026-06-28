@@ -20,8 +20,17 @@ class Settings(BaseSettings):
     DB_PASS: str
     DB_NAME: str
 
-    TASK_SERVICE_URL: str
+    REPORT_SERVICE_URL: str
+    REPORT_SERVICE_TIMEOUT: int
+    REPORT_SERVICE_RETRIES: int
 
+    LOG_LEVEL: str = "INFO"
+
+    MAX_CONSECUTIVE_FAILURES: int
+    CB_WAIT_SECONDS: int
+    MAX_CB_RETRIES: int
+
+    REDIS_URL: str
 
     @property
     def DATABASE_URL_asyncpg(self) -> str:

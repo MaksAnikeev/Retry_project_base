@@ -82,3 +82,29 @@ alembic upgrade head
 ~~~pycon
 python -m src.main  
 ~~~
+
+
+# Запуск Redis в фоне
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+
+# Проверка
+docker ps
+docker logs redis
+
+# Остановка
+docker stop redis
+docker rm redis
+
+# Celery Worker
+celery -A src.workers.celery_app worker --loglevel=info --pool=solo
+
+# Celery Beat (планировщик)
+celery -A src.workers.celery_app beat --loglevel=info
+
+# Flower — UI для мониторинга
+pip install flower
+celery -A src.workers.celery_app flower --port=5555
+Открой http://localhost:5555 — увидишь все задачи, их статус, историю.
+
+# Тестовый заапуск воркера по отчетам
+celery -A src.workers.celery_app call sync_reports_task

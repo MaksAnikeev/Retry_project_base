@@ -3,27 +3,31 @@ import logging
 import aiohttp
 from typing import Optional
 
-from aiohttp import ClientConnectorError, ClientConnectionError, ServerDisconnectedError, ClientOSError, ClientError, \
-    ClientTimeout
-from asyncio import TimeoutError as AsyncTimeoutError
+from aiohttp import ClientError, ClientTimeout
 
+from src.config import get_settings
+from src.exceptions.infra import ExternalServiceClientException
 from src.utils.retry_client import retry_standard
 
 from src.utils.circuit_breaker import circuit_breaker_standard
-from src.exceptions import ExternalServiceUnavailableException
+from src.exceptions import ExternalServiceUnavailableException, ObjectNotFoundException
 from src.schemas.tasks_schemas import TaskAPIRequestSchema, TaskAPIResponseSchema
+
+settings = get_settings()
 
 
 class ReportServiceClient:
 
     def __init__(
             self,
-            base_url: str,
-            timeout: int = 30,
+            base_url: str = settings.REPORT_SERVICE_URL,
+            timeout: int = settings.REPORT_SERVICE_TIMEOUT,
     ):
         self.base_url = base_url.rstrip("/")
         self._default_timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: Optional[aiohttp.ClientSession] = None
+
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -53,33 +57,66 @@ class ReportServiceClient:
 
     @circuit_breaker_standard
     @retry_standard
-    async def get_report(self, task_info: TaskAPIRequestSchema) -> TaskAPIResponseSchema:
+    async def get_reports_batch(
+        self,
+        tasks: list[TaskAPIRequestSchema],
+    ) -> list[TaskAPIResponseSchema]:
+        if not tasks:
+            return []
         session = await self.get_session()
         url = f"{self.base_url}/reports"
+        payload = [task.model_dump(mode="json") for task in tasks]
 
         try:
-            async with session.post(url, json=task_info.model_dump(mode='json')) as response:
-                if not response.ok:
-                    error_text = await response.text()
+            async with session.post(url, json=payload) as response:
+                if response.status >= 500:
                     raise ExternalServiceUnavailableException(
-                        detail=f"External service returned {response.status}: {error_text[:100]}"
+                        detail=f"External service error: {response.status}"
                     )
-                return TaskAPIResponseSchema(**await response.json())
 
-        except (
-                ClientConnectorError,
-                ClientConnectionError,
-                ServerDisconnectedError,
-                ClientOSError,
-                AsyncTimeoutError,
-                TimeoutError,
-                ClientError,
-        ) as e:
-            logging.error(
-                f"Failed connect for external service: {self.base_url}/reports. "
-                f"Reason: {type(e).__name__} - {e}"
+                elif response.status == 429:
+                    raise ExternalServiceUnavailableException(
+                        detail="Rate limit exceeded"
+                    )
+
+                elif response.status == 404:
+                    self.logger.warning(
+                        "Resource not found",
+                        extra={"url": url, "status": response.status},
+                    )
+                    raise ObjectNotFoundException(
+                        detail="Reports endpoint not found"
+                    )
+
+                elif 400 <= response.status < 500:
+                    error_text = await response.text()
+                    self.logger.error(
+                        "Client error from external service",
+                        extra={
+                            "url": url,
+                            "status": response.status,
+                            "error": error_text[:200],
+                        },
+                    )
+                    raise ExternalServiceClientException(
+                        detail=f"Invalid request: {error_text[:200]}"
+                    )
+
+                return [TaskAPIResponseSchema(**item) for item in await response.json()]
+
+        except (ClientError, TimeoutError) as e:
+            self.logger.error(
+                "Network error calling external service",
+                extra={"url": url, "error": str(e), "error_type": type(e).__name__},
             )
             raise ExternalServiceUnavailableException(
-                detail=f"Failed to connect to task service: {type(e).__name__}"
+                detail=f"Network error: {type(e).__name__}"
             ) from e
 
+
+def create_report_client() -> "ReportServiceClient":
+    settings = get_settings()
+    return ReportServiceClient(
+        base_url=settings.REPORT_SERVICE_URL,
+        timeout=settings.REPORT_SERVICE_TIMEOUT,
+    )

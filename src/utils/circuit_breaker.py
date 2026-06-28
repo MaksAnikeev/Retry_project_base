@@ -1,6 +1,4 @@
 import logging
-from aiohttp import ClientConnectorError, ServerDisconnectedError, ClientConnectionError, ClientOSError
-from asyncio import TimeoutError as AsyncTimeoutError
 from circuitbreaker import circuit
 
 from src.exceptions import ExternalServiceUnavailableException
@@ -8,13 +6,6 @@ from src.exceptions import ExternalServiceUnavailableException
 logger = logging.getLogger(__name__)
 
 CIRCUIT_BREAKER_EXCEPTIONS = (
-    ConnectionError,
-    TimeoutError,
-    AsyncTimeoutError,
-    ClientConnectorError,
-    ClientConnectionError,
-    ServerDisconnectedError,
-    ClientOSError,
     ExternalServiceUnavailableException,
 )
 

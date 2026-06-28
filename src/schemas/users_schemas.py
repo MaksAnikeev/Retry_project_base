@@ -97,6 +97,14 @@ class UserTasksShortGetSchema(BaseModel):
     tasks: list[TaskGetSchema] = Field(default_factory=list)
 
 
+class UsersTasksPaginatedResponse(BaseModel):
+    items: list[UserTasksShortGetSchema] = Field(description="Список элементов")
+    next_cursor: datetime | None = Field(
+        default=None,
+        description="Курсор для следующей страницы (created_at последнего элемента)"
+    )
+
+
 class UserGetSchema(BaseModel):
     id: uuid.UUID
     email: EmailStr = Field(..., description="Адрес эл.почты")

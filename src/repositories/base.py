@@ -44,7 +44,6 @@ class BaseRepository(Generic[Model, Schema]):
             raise
 
 
-
     async def commit(self):
         await self.session.commit()
 

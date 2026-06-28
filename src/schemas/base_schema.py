@@ -1,5 +1,5 @@
+from datetime import datetime
 from pydantic import BaseModel, model_validator, ConfigDict, Field
-
 from src.exceptions import AtLeastOneFieldRequiredException, EmptyRequestBodyException
 
 
@@ -18,7 +18,8 @@ class ChangeBaseSchema(BaseModel):
 
 
 class PaginationParamsSchema(BaseModel):
-    page: int = Field(1, ge=1, description="Номер страницы")
-    per_page: int = Field(
-        20, ge=1, le=100, description="количество объектов на странице"
+    limit: int = Field(default=20, ge=1, le=100)
+    cursor: datetime | None = Field(
+        default=None,
+        description="Курсор — created_at последнего элемента с предыдущей страницы"
     )

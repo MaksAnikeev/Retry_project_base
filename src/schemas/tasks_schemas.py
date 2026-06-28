@@ -1,8 +1,8 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 import uuid
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 if TYPE_CHECKING:
     from src.schemas.users_schemas import UserGetSchema
@@ -68,14 +68,28 @@ class TaskAPIRequestSchema(BaseModel):
 
 
 class TaskAPIResponseSchema(BaseModel):
+    task_id: uuid.UUID = Field(..., description="ИД задачи")
     complexity: str = Field(..., description="Сложность выполняемой задачи")
     estimated_hours: float = Field(..., description="Время на выполнение задачи")
     priority: str = Field(..., description="Статус задачи")
+
+    @model_validator(mode="after")
+    def normalize(self) -> Self:
+        self.complexity = self.complexity or "easy"
+        self.estimated_hours = self.estimated_hours or 2.0
+        self.priority = self.priority or "medium"
+        return self
 
 
 class TasksDeleteSchema(BaseModel):
     user_id: uuid.UUID = Field(..., description="ИД пользователя")
     task_id: uuid.UUID = Field(..., description="ИД задачи")
+
+
+class DeleteTasksStatsSchema(BaseModel):
+    deleted: int = Field(default=0, description="Количество удалённых задач")
+    skipped: int = Field(default=0, description="Количество пропущенных задач")
+
 
 from src.schemas.users_schemas import UserGetSchema
 TaskUserGetSchema.model_rebuild()

@@ -1,3 +1,4 @@
+from datetime import datetime
 import uuid
 from typing import Any
 
@@ -20,20 +21,26 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
     async def get_all(
         self,
         limit: int,
-        offset: int
+        cursor: datetime | None = None,
     ) -> list[UserORM]:
         query = (
             select(self.model)
             .options(selectinload(self.model.tasks))
-            .limit(limit)
-            .offset(offset)
         )
+
+        if cursor is not None:
+            query = query.where(self.model.created_at < cursor)
+
+        query = (
+            query
+            .order_by(self.model.created_at.desc())
+            .limit(limit)
+        )
+
         result = await self.session.execute(query)
         return list(result.scalars().unique().all())
 
     async def delete_bulk_by_ids(self, user_ids: list[uuid.UUID]) -> int:
-        if not user_ids:
-            return 0
 
         stmt = (
             update(self.model)
