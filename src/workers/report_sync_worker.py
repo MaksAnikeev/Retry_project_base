@@ -1,37 +1,41 @@
+import asyncio
 import logging
+import uuid
 from typing import TYPE_CHECKING
 
-import asyncio
 import circuitbreaker
 
-from src.clients.report_http_client import ReportServiceClient
-from src.config import get_settings
+from src.clients.report_service_client import ReportServiceClient
+from src.config import settings
 from src.exceptions import ExternalServiceUnavailableException
+from src.mappers.task_mapper import to_task_api_request
 from src.repositories.task_rep import TasksRepository
+from src.repositories.unit_of_work import UnitOfWork
 from src.schemas.sync_worker_schemas import SyncStatsSchema
-from src.schemas.tasks_schemas import TaskAPIRequestSchema, TaskAPIResponseSchema
+from src.schemas.tasks_schemas import ReportStatus, TaskAPIResponseSchema
 
 if TYPE_CHECKING:
     from src.models import TaskORM
 
-settings = get_settings()
 
 class ReportSyncWorker:
 
     max_consecutive_failures = settings.MAX_CONSECUTIVE_FAILURES
-    failure_backoff_seconds = 5
+    failure_backoff_seconds = settings.FAILURE_BACKOFF_SECONDS
 
-    cb_wait_second=settings.CB_WAIT_SECONDS
-    max_cb_retries=settings.MAX_CB_RETRIES
+    cb_wait_second = settings.CB_WAIT_SECONDS
+    max_cb_retries = settings.MAX_CB_RETRIES
 
     def __init__(
         self,
         task_repo: TasksRepository,
         report_client: ReportServiceClient,
+        uow: UnitOfWork,
         batch_size: int = 50,
     ) -> None:
         self.task_repo = task_repo
         self.report_client = report_client
+        self.uow = uow
         self.batch_size = batch_size
         self.logger = logging.getLogger(self.__class__.__name__)
         self._consecutive_failures = 0
@@ -47,9 +51,10 @@ class ReportSyncWorker:
 
         try:
             while True:
-                pending_tasks = await self.task_repo.get_tasks_pending_reports(
-                    limit=self.batch_size,
-                )
+                async with self.uow:
+                    pending_tasks = await self.task_repo.get_tasks_pending_reports(
+                        limit=self.batch_size,
+                    )
 
                 if not pending_tasks:
                     self.logger.info(
@@ -103,20 +108,18 @@ class ReportSyncWorker:
             "Processing batch",
             extra={"tasks_count": len(tasks)},
         )
-
-        requests = self._build_requests(tasks)
-        reports = await self._fetch_reports(requests)
-
+        reports = await self._fetch_reports(tasks)
         if reports is None:
             return None
 
         self._consecutive_failures = 0
         self._cb_retries = 0
 
-        updated_count = self._apply_reports(tasks, reports)
+        updated_count = self._apply_reports_to_tasks(tasks, reports)
 
         if updated_count > 0:
-            await self.task_repo.commit()
+            async with self.uow:
+                await self.uow.session.flush()
 
         self.logger.info(
             "Batch processed",
@@ -130,28 +133,14 @@ class ReportSyncWorker:
             updated=updated_count,
         )
 
-    def _build_requests(
-        self,
-        tasks: list["TaskORM"],
-    ) -> list[TaskAPIRequestSchema]:
-        return [
-            TaskAPIRequestSchema(
-                task_id=task.id,
-                user_id=task.user_id,
-                title=task.title,
-                description=task.description,
-                finish_date=task.finish_date,
-            )
-            for task in tasks
-        ]
-
     async def _fetch_reports(
         self,
-        requests: list[TaskAPIRequestSchema],
-    ) -> list[TaskAPIResponseSchema] | None:
+        tasks: list[TaskORM],
+    ) -> dict[uuid.UUID, TaskAPIResponseSchema] | None:
         try:
+            requests = [to_task_api_request(task) for task in tasks]
             reports = await self.report_client.get_reports_batch(requests)
-            return reports
+            return {r.task_id: r for r in reports}
 
         except ExternalServiceUnavailableException as e:
             self._consecutive_failures += 1
@@ -182,15 +171,12 @@ class ReportSyncWorker:
             await asyncio.sleep(self.cb_wait_second)
             return None
 
-    def _apply_reports(
+    def _apply_reports_to_tasks(
         self,
-        tasks: list["TaskORM"],
-        reports: list[TaskAPIResponseSchema],
+        tasks: list[TaskORM],
+        reports_by_id: dict[uuid.UUID, TaskAPIResponseSchema],
     ) -> int:
-
-        reports_by_id = {r.task_id: r for r in reports}
         updated_count = 0
-
         for task in tasks:
             report = reports_by_id.get(task.id)
             if report is None:
@@ -203,7 +189,7 @@ class ReportSyncWorker:
             task.complexity = report.complexity
             task.estimated_hours = report.estimated_hours
             task.priority = report.priority
-            task.is_report_pending = False
+            task.report_status = ReportStatus.COMPLETED.value
             updated_count += 1
 
         return updated_count

@@ -2,7 +2,7 @@ from fastapi import APIRouter, status
 from starlette.responses import JSONResponse
 
 from src.dependencies.dependencies import ReportClientDep
-from src.api.routers.health.utils import HealthDB
+from src.api.routers.health.utils import HealthDB, check_health
 from src.schemas.health_schemas import HealthStatus, LivenessResponse, ComponentStatus, ReadinessResponse
 
 router = APIRouter(tags=["Health"])
@@ -10,7 +10,6 @@ router = APIRouter(tags=["Health"])
 
 @router.get(
     "/health",
-    status_code=status.HTTP_200_OK,
     response_model=LivenessResponse,
     summary="Liveness probe"
 )
@@ -23,7 +22,6 @@ async def liveness_probe():
 
 @router.get(
     "/ready",
-    status_code=status.HTTP_200_OK,
     response_model=ReadinessResponse,
     summary="Readiness probe"
 )
@@ -53,12 +51,11 @@ async def readiness_probe():
 
 @router.get(
     "/report_ready",
-    status_code=status.HTTP_200_OK,
     response_model=ReadinessResponse,
     summary="Readiness probe for report_service"
 )
 async def report_readiness_probe(client: ReportClientDep):
-    is_healthy = await client.check_health(timeout=3.0)
+    is_healthy = await check_health(client=client, timeout=3.0)
     report_service_status = HealthStatus.OK if is_healthy else HealthStatus.ERROR
     report_service_status_info = ComponentStatus(
         name="report_service",

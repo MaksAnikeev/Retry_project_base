@@ -1,8 +1,8 @@
 """сreate_initial_tables
 
-Revision ID: 85c34cb73388
+Revision ID: 1918eae122d5
 Revises:
-Create Date: 2026-06-25 13:46:15.252565
+Create Date: 2026-07-03 17:13:56.079062
 
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = "85c34cb73388"
+revision: str = "1918eae122d5"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -28,7 +28,9 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("is_deleted", sa.Boolean(), nullable=False),
         sa.Column("hashed_password", sa.String(length=200), nullable=False),
-        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column(
+            "id", sa.Uuid(), server_default=sa.text("gen_random_uuid()"), nullable=False
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -44,13 +46,21 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("title", sa.String(length=100), nullable=False),
         sa.Column("description", sa.String(), nullable=True),
-        sa.Column("done", sa.Boolean(), nullable=False),
         sa.Column("finish_date", sa.Date(), nullable=False),
-        sa.Column("complexity", sa.String(length=50), nullable=False),
-        sa.Column("estimated_hours", sa.Float(), nullable=False),
-        sa.Column("priority", sa.String(length=50), nullable=False),
-        sa.Column("is_report_pending", sa.Boolean(), nullable=False),
-        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("done", sa.Boolean(), nullable=False),
+        sa.Column("complexity", sa.String(length=50), nullable=True),
+        sa.Column("estimated_hours", sa.Float(), nullable=True),
+        sa.Column("priority", sa.String(length=20), nullable=True),
+        sa.Column(
+            "report_status",
+            sa.String(length=20),
+            server_default="pending",
+            nullable=False,
+            comment="Статус отчёта: pending, completed, failed",
+        ),
+        sa.Column(
+            "id", sa.Uuid(), server_default=sa.text("gen_random_uuid()"), nullable=False
+        ),
         sa.Column("is_deleted", sa.Boolean(), nullable=False),
         sa.Column(
             "created_at",

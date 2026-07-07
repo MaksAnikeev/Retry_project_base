@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
+from typing import Self
+
+from pydantic import BaseModel, Field, EmailStr, model_validator
 from src.schemas.base_schema import ChangeBaseSchema
-from src.schemas.tasks_schemas import TaskCreateSchema, TaskGetSchema, TaskUpdateSchema, TaskRequestSchema, \
+from src.schemas.tasks_schemas import TaskGetSchema, TaskUpdateSchema, TaskRequestSchema, \
     TasksDeleteSchema
 
 
@@ -11,6 +13,23 @@ class UserRequestSchema(BaseModel):
     username: str | None = Field(None, description="Имя пользователя")
     password: str = Field(..., description="Пароль")
     tasks: list[TaskRequestSchema] = Field(default_factory=list, description="Список задач для обновления")
+
+    @model_validator(mode="after")
+    def check_unique_task_titles(self) -> Self:
+        if not self.tasks:
+            return self
+        titles = [task.title for task in self.tasks]
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for title in titles:
+            if title in seen and title not in duplicates:
+                duplicates.append(title)
+            seen.add(title)
+        if duplicates:
+            raise ValueError(
+                f"Duplicate task titles: {duplicates}"
+            )
+        return self
 
 example_add_user_task = {
     "1": {
@@ -41,38 +60,50 @@ example_add_user_task = {
             "password": "userik",
             "tasks": []
         },
-    },
-    "3": {
-        "summary": "Добавить задачи Макс",
+    }
+}
+
+class ExistedUserRequestSchema(BaseModel):
+    id: uuid.UUID = Field(..., description="ID пользователя, которому добавляем задачи")
+    tasks: list[TaskRequestSchema] = Field(default_factory=list, description="Список задач для добавления")
+
+    @model_validator(mode="after")
+    def check_unique_task_titles(self) -> Self:
+        if not self.tasks:
+            return self
+        titles = [task.title for task in self.tasks]
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for title in titles:
+            if title in seen and title not in duplicates:
+                duplicates.append(title)
+            seen.add(title)
+        if duplicates:
+            raise ValueError(
+                f"Duplicate task titles: {duplicates}"
+            )
+        return self
+
+example_existed_user_add_task = {
+    "1": {
+        "summary": "Добавить задачи Лучиано",
         "value": {
-            "email": "anikeev.mks@rambler.com",
-            "password": "admin",
+            "id": "eb6ee070-cb8f-4a4f-947a-a1cbce59f9e8",
             "tasks": [
                 {
-                "title": "Купить бумагу",
-                "description": "Заказать в офисмаге бумагу",
-                "finish_date": '2026-05-21',
+                "title": "Новая задача для добавления",
+                "description": "Бла бла бла",
+                "finish_date": '2026-06-21',
                 },
                 {
-                "title": "Купить чернила2",
+                "title": "Еще одна новая задача",
                 "description": "222222222",
-                "finish_date": '2026-06-02',
+                "finish_date": '2026-07-02',
                 },
             ]
         },
     },
 }
-
-
-class UserTasksCreateSchema(BaseModel):
-    id: uuid.UUID
-    email: EmailStr = Field(..., description="Адрес эл.почты")
-    username: str | None = Field(None, description="Имя пользователя")
-    hashed_password: str = Field(..., description="Закодированный пароль")
-    is_active: bool | None = Field(True, description="Статус пользователя")
-    is_deleted: bool | None = Field(False, description="Пользователь удален")
-
-    tasks: list[TaskCreateSchema] = Field(default_factory=list)
 
 
 class UserTasksGetSchema(BaseModel):
@@ -118,6 +149,7 @@ class UserGetSchema(BaseModel):
 class UserResponse(BaseModel):
     status: str = Field(default="OK", description="Статус операции")
     description: str = Field(description="Описание результата")
+
 
 class UserUpdateWithTasksSchema(ChangeBaseSchema):
     id: uuid.UUID = Field(..., description="ID пользователя, которого обновляем")
@@ -184,5 +216,3 @@ class BulkDeletionResponseSchema(BaseModel):
     message: str = Field(description="Человекочитаемое сообщение о результате")
     deleted_users_count: int = Field(default=0, description="Количество удаленных пользователей")
     deleted_tasks_count: int = Field(default=0, description="Количество удаленных задач")
-
-UserTasksCreateSchema.model_rebuild()

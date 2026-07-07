@@ -1,14 +1,13 @@
 from celery import Celery
-from src.config import get_settings
 from celery.schedules import crontab
 
-settings = get_settings()
+from src.config import settings
 
 celery_instance = Celery(
     main="worker_update_default_reports",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["src.workers.tasks"]
+    include=["src.workers.tasks"],
 )
 
 celery_instance.conf.update(
@@ -25,6 +24,6 @@ celery_instance.conf.update(
 celery_instance.conf.beat_schedule = {
     "sync-reports-nightly": {
         "task": "src.workers.tasks.sync_reports_task",
-        "schedule": crontab(minute=49, hour=8),
+        "schedule": crontab(minute=0, hour=1),
     },
 }

@@ -6,10 +6,11 @@ from starlette.requests import Request
 
 from src.db import get_session
 from src.repositories.task_rep import TasksRepository
+from src.repositories.unit_of_work import UnitOfWork
 from src.repositories.user_rep import UsersRepository
 from src.schemas.base_schema import PaginationParamsSchema
 from src.services.user_task_service import UserTaskService
-from src.clients.report_http_client import ReportServiceClient
+from src.clients.report_service_client import ReportServiceClient
 
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -34,16 +35,24 @@ def get_report_client(request: Request) -> ReportServiceClient:
 
 ReportClientDep = Annotated[ReportServiceClient, Depends(get_report_client)]
 
+def get_uow(session: SessionDep) -> UnitOfWork:
+    return UnitOfWork(session=session)
 
-PaginationDep = Annotated[PaginationParamsSchema, Depends()]
+UowDep = Annotated[UnitOfWork, Depends(get_uow)]
+
 
 def get_user_task_service(
     user_rep: UserRepDep,
     http_client: ReportClientDep,
+    uow: UowDep
 ) -> UserTaskService:
     return UserTaskService(
         user_rep=user_rep,
         http_client=http_client,
+        uow=uow
     )
 
 UserTaskServiceDep = Annotated[UserTaskService, Depends(get_user_task_service)]
+
+
+PaginationDep = Annotated[PaginationParamsSchema, Depends()]

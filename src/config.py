@@ -22,15 +22,32 @@ class Settings(BaseSettings):
 
     REPORT_SERVICE_URL: str
     REPORT_SERVICE_TIMEOUT: int
-    REPORT_SERVICE_RETRIES: int
 
     LOG_LEVEL: str = "INFO"
 
+    REDIS_URL: str
+
+    # --------------------RETRY-------------------------
+    STOP_RETRY_AFTER_ATTEMPT_BASE: int
+    EXPONENTIAL_JITTER_INTERVAL_BASE: int
+    EXPONENTIAL_JITTER_MAX_BASE: int
+    EXPONENTIAL_JITTER_EXP_BASE: int
+    EXPONENTIAL_JITTER_BASE: float
+    STOP_RETRY_AFTER_ATTEMPT_FAST: int
+    EXPONENTIAL_JITTER_INTERVAL_FAST: int
+    EXPONENTIAL_JITTER_MAX_FAST: int
+
+    # --------------------CIRCUIT_BREAKER-------------------------
+    CB_FAILURE_THRESHOLD_STANDARD: int
+    CB_RECOVERY_TIMEOUT_STANDARD: int
+
+    # --------------------WORKER-------------------------
     MAX_CONSECUTIVE_FAILURES: int
+    FAILURE_BACKOFF_SECONDS: int
     CB_WAIT_SECONDS: int
     MAX_CB_RETRIES: int
+    BATCH_SIZE: int
 
-    REDIS_URL: str
 
     @property
     def DATABASE_URL_asyncpg(self) -> str:
@@ -44,3 +61,5 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+settings = get_settings()

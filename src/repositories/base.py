@@ -1,8 +1,6 @@
-import logging
 from typing import Any, TypeVar, Generic, Type
 
 from sqlalchemy import select, ColumnElement
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -31,21 +29,6 @@ class BaseRepository(Generic[Model, Schema]):
         result = query_result.scalars().one_or_none()
         return result
 
-
     async def save_orm_object(self, obj: Any) -> Model:
-        try:
-            self.session.add(obj)
-            await self.session.flush()
-            await self.session.refresh(obj)
-            return obj
-        except IntegrityError as ex:
-            logging.error(f"Database integrity error on save: {ex.orig}")
-            await self.session.rollback()
-            raise
-
-
-    async def commit(self):
-        await self.session.commit()
-
-    async def rollback(self):
-        await self.session.rollback()
+        self.session.add(obj)
+        return obj

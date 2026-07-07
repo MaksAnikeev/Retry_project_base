@@ -1,17 +1,17 @@
 from src.exceptions.base import BaseDomainException
-from src.exceptions.not_found import ObjectNotFoundException, UserNotFoundException, TaskNotFoundException, UserTaskNotFoundException
-from src.exceptions.conflict import AlreadyExistsException, TaskAlreadyExistsException, UserAlreadyExistsException
+from src.exceptions.not_found import ObjectNotFoundException
+from src.exceptions.already_exists import AlreadyExistsException
 from src.exceptions.validation import (
-    MissingRequiredFieldsException, NotAllowedFieldException, EmptyPasswordException,
+    MissingRequiredFieldsException, NotAllowedFieldException, EmptyFiledException,
     AtLeastOneFieldRequiredException, EmptyRequestBodyException
 )
-from src.exceptions.infra import ExternalServiceUnavailableException
+from src.exceptions.external_service import ExternalServiceUnavailableException
 
 __all__ = [
     "BaseDomainException",
-    "ObjectNotFoundException", "UserNotFoundException", "TaskNotFoundException", "UserTaskNotFoundException",
-    "AlreadyExistsException", "TaskAlreadyExistsException", "UserAlreadyExistsException",
-    "MissingRequiredFieldsException", "NotAllowedFieldException", "EmptyPasswordException",
+    "ObjectNotFoundException",
+    "AlreadyExistsException",
+    "MissingRequiredFieldsException", "NotAllowedFieldException", "EmptyFiledException",
     "AtLeastOneFieldRequiredException", "EmptyRequestBodyException",
     "ExternalServiceUnavailableException",
 ]

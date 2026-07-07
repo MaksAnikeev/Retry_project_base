@@ -2,15 +2,19 @@ import uuid
 
 from fastapi import APIRouter, Body
 
-from src.dependencies.dependencies import UserTaskServiceDep, PaginationDep
+from src.dependencies.dependencies import PaginationDep, UserTaskServiceDep
 from src.schemas.users_schemas import (
     BulkDeletionResponseSchema,
+    ExistedUserRequestSchema,
+    UserRequestSchema,
     UserResponse,
+    UsersTasksPaginatedResponse,
     UserTasksDeleteSchema,
     UserTasksGetSchema,
-    UserTasksShortGetSchema,
     UserUpdateWithTasksSchema,
-    example_add_user_task, example_update_user_task, UserRequestSchema, UsersTasksPaginatedResponse,
+    example_add_user_task,
+    example_existed_user_add_task,
+    example_update_user_task,
 )
 
 router = APIRouter(prefix="/user_tasks", tags=["UserTasks"])
@@ -32,7 +36,7 @@ async def get_user(
     return await service.get_user_by_id(user_id=user_id)
 
 
-@router.post("/user_task", summary="регистрация пользователя и добавление задач")
+@router.post("/user_tasks", summary="регистрация пользователя и добавление задач")
 async def add_user_tasks(
     service: UserTaskServiceDep,
     user_data: UserRequestSchema = Body(openapi_examples=example_add_user_task),
@@ -40,10 +44,18 @@ async def add_user_tasks(
     return await service.create_user_with_tasks(user_data=user_data)
 
 
+@router.post("/user/tasks", summary="добавление задач существующему пользователю")
+async def add_tasks_to_existed_user(
+    service: UserTaskServiceDep,
+    user_data: ExistedUserRequestSchema = Body(openapi_examples=example_existed_user_add_task),
+) -> UserResponse:
+    return await service.add_tasks_to_user(user_data=user_data)
+
+
 @router.patch("", summary="Изменить информацию по пользователю или по его задачам")
 async def edit_user_tasks(
     service: UserTaskServiceDep,
-    update_data: UserUpdateWithTasksSchema = Body(openapi_examples=example_update_user_task)
+    update_data: UserUpdateWithTasksSchema = Body(openapi_examples=example_update_user_task),
 ) -> UserTasksGetSchema:
     return await service.update_user_and_tasks(update_data=update_data)
 

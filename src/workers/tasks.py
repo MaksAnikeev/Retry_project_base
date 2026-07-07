@@ -1,18 +1,17 @@
 import asyncio
 import logging
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from src.clients.report_http_client import create_report_client
-from src.config import get_settings
+from src.clients.report_service_client import create_report_client
+from src.config import settings
 from src.repositories.task_rep import TasksRepository
+from src.repositories.unit_of_work import UnitOfWork
 from src.schemas.sync_worker_schemas import SyncStatsSchema
 from src.workers.celery_app import celery_instance
 from src.workers.report_sync_worker import ReportSyncWorker
 
 logger = logging.getLogger(__name__)
-
-settings = get_settings()
 
 
 @celery_instance.task(
@@ -58,11 +57,13 @@ async def _run_worker() -> SyncStatsSchema:
     report_client = create_report_client()
 
     try:
+        uow = UnitOfWork(session=session)
         task_repo = TasksRepository(session=session)
         worker = ReportSyncWorker(
             task_repo=task_repo,
             report_client=report_client,
-            batch_size=50,
+            uow=uow,
+            batch_size=settings.BATCH_SIZE,
         )
         return await worker.run()
     finally:

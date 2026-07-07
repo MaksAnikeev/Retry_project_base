@@ -1,30 +1,24 @@
-from typing import TYPE_CHECKING, Self
+from enum import Enum
+from typing import Self
 import uuid
 from datetime import date
 
 from pydantic import BaseModel, Field, model_validator
 
-if TYPE_CHECKING:
-    from src.schemas.users_schemas import UserGetSchema
+
+class ReportStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class TaskRequestSchema(BaseModel):
     title: str = Field(..., description="Короткое название задачи")
     description: str | None = Field(None, description="Описание задачи")
     finish_date: date = Field(..., description="Плановая дата выполнения задачи")
-
-class TaskCreateSchema(BaseModel):
-    id: uuid.UUID = Field(..., description="ИД задачи")
-    user_id: uuid.UUID = Field(..., description="ИД пользователя")
-    title: str = Field(..., description="Короткое название задачи")
-    description: str | None = Field(None, description="Описание задачи")
-    finish_date: date = Field(..., description="Плановая дата выполнения задачи")
-    done: bool = Field(False, description="Отметка о выполнении задачи")
-    is_deleted: bool = Field(..., description="Задача удалена")
-    complexity: str = Field(..., description="Сложность выполняемой задачи")
-    estimated_hours: float = Field(..., description="Время на выполнение задачи")
-    priority: str = Field(..., description="Статус задачи")
-
 
 class TaskGetSchema(BaseModel):
     id: uuid.UUID
@@ -33,6 +27,10 @@ class TaskGetSchema(BaseModel):
     finish_date: date = Field(..., description="Плановая дата выполнения задачи")
     done: bool = Field(False, description="Отметка о выполнении задачи")
     is_deleted: bool = Field(..., description="Задача удалена")
+    report_status: str = Field(..., description="Статус обработки задачи: pending, completed, failed")
+    complexity: str | None = Field(None, description="Сложность выполняемой задачи")
+    estimated_hours: float | None = Field(None, description="Время на выполнение задачи")
+    priority: str | None = Field(None, description="Статус важности задачи")
 
 
 class TaskUpdateSchema(BaseModel):
@@ -45,18 +43,6 @@ class TaskUpdateSchema(BaseModel):
     complexity: str | None = Field(None, description="Сложность выполняемой задачи")
     estimated_hours: float | None = Field(None, description="Время на выполнение задачи")
     priority: str | None = Field(None, description="Статус задачи")
-
-
-class TaskUserGetSchema(BaseModel):
-    id: uuid.UUID = Field(..., description="ИД задачи")
-    title: str = Field(..., description="Короткое название задачи")
-    description: str | None = Field(None, description="Описание задачи")
-    finish_date: date = Field(..., description="Плановая дата выполнения задачи")
-    done: bool = Field(False, description="Отметка о выполнении задачи")
-    complexity: str = Field(..., description="Сложность выполняемой задачи")
-    estimated_hours: float = Field(..., description="Время на выполнение задачи")
-    priority: str = Field(..., description="Статус задачи")
-    user: "UserGetSchema" = Field(..., description="Пользователь")
 
 
 class TaskAPIRequestSchema(BaseModel):
@@ -89,7 +75,3 @@ class TasksDeleteSchema(BaseModel):
 class DeleteTasksStatsSchema(BaseModel):
     deleted: int = Field(default=0, description="Количество удалённых задач")
     skipped: int = Field(default=0, description="Количество пропущенных задач")
-
-
-from src.schemas.users_schemas import UserGetSchema
-TaskUserGetSchema.model_rebuild()

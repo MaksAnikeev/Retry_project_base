@@ -12,10 +12,10 @@ class NotAllowedFieldException(BaseDomainException):
     error_code = "NOT_ALLOWED_FIELD"
     detail = "Invalid or not allowed parameters for update"
 
-class EmptyPasswordException(BaseDomainException):
+class EmptyFiledException(BaseDomainException):
     http_status_code = http.HTTPStatus.BAD_REQUEST
-    error_code = "EMPTY_PASSWORD"
-    detail = "Password cannot be empty"
+    error_code = "EMPTY_FIELD"
+    detail = "This field cannot be empty"
 
 class AtLeastOneFieldRequiredException(BaseDomainException):
     http_status_code = http.HTTPStatus.BAD_REQUEST

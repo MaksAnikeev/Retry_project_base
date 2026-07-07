@@ -10,10 +10,10 @@ class ChangeBaseSchema(BaseModel):
     @model_validator(mode="after")
     def check_at_least_one_field(self):
         if not self.model_fields_set:
-            raise EmptyRequestBodyException
+            raise EmptyRequestBodyException('At least one field must be passed')
 
         if all(value is None or value == "" for value in self.model_dump().values()):
-            raise AtLeastOneFieldRequiredException
+            raise AtLeastOneFieldRequiredException('At least one field must be filled in')
         return self
 
 

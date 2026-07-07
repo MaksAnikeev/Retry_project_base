@@ -1,8 +1,8 @@
-from sqlalchemy import or_, update, select
+from sqlalchemy import select
 
 from src.models import TaskORM
 from src.repositories.base import BaseRepository
-from src.schemas.tasks_schemas import TaskGetSchema
+from src.schemas.tasks_schemas import TaskGetSchema, ReportStatus
 
 
 class TasksRepository(BaseRepository[TaskORM, TaskGetSchema]):
@@ -11,8 +11,9 @@ class TasksRepository(BaseRepository[TaskORM, TaskGetSchema]):
     async def get_tasks_pending_reports(self, limit: int = 50) -> list[TaskORM]:
         stmt = (
             select(TaskORM)
-            .where(TaskORM.is_report_pending == True)
+            .where(TaskORM.report_status == ReportStatus.PENDING.value)
             .order_by(TaskORM.created_at)
+            .with_for_update(skip_locked=True)
             .limit(limit)
         )
         result = await self.session.execute(stmt)
