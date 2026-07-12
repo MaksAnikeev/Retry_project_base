@@ -24,6 +24,6 @@ celery_instance.conf.update(
 celery_instance.conf.beat_schedule = {
     "sync-reports-nightly": {
         "task": "src.workers.tasks.sync_reports_task",
-        "schedule": crontab(minute=0, hour=1),
+        "schedule": crontab(minute=0, hour="*/3"),
     },
 }

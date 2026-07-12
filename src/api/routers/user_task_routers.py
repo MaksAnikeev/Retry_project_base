@@ -40,7 +40,7 @@ async def get_user(
 async def add_user_tasks(
     service: UserTaskServiceDep,
     user_data: UserRequestSchema = Body(openapi_examples=example_add_user_task),
-) -> UserResponse:
+) -> UserTasksGetSchema:
     return await service.create_user_with_tasks(user_data=user_data)
 
 

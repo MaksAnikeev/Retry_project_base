@@ -4,11 +4,11 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from src.db import get_session
+from src.database.db import get_session
 from src.repositories.task_rep import TasksRepository
-from src.repositories.unit_of_work import UnitOfWork
+from src.database.unit_of_work import UnitOfWork
 from src.repositories.user_rep import UsersRepository
-from src.schemas.base_schema import PaginationParamsSchema
+from src.schemas.pagination_schema import PaginationParamsSchema
 from src.services.user_task_service import UserTaskService
 from src.clients.report_service_client import ReportServiceClient
 
@@ -43,12 +43,12 @@ UowDep = Annotated[UnitOfWork, Depends(get_uow)]
 
 def get_user_task_service(
     user_rep: UserRepDep,
-    http_client: ReportClientDep,
+    report_client: ReportClientDep,
     uow: UowDep
 ) -> UserTaskService:
     return UserTaskService(
         user_rep=user_rep,
-        http_client=http_client,
+        report_client=report_client,
         uow=uow
     )
 

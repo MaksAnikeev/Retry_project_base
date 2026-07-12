@@ -3,8 +3,10 @@ import uuid
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
+from src.mappers.user_mapper import schema_to_insert_dict
 from src.models import UserORM
 from src.repositories.base import BaseRepository
 from src.schemas.users_schemas import UserGetSchema, UserRequestSchema
@@ -55,3 +57,21 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
         )
         result = await self.session.execute(stmt)
         return result.rowcount
+
+    async def upsert_user(self, user_data: UserRequestSchema) -> UserORM | None:
+        stmt = insert(UserORM).values(**schema_to_insert_dict(user_data))
+        stmt = stmt.on_conflict_do_nothing(index_elements=["email"])
+        stmt = stmt.returning(UserORM.id)
+
+        result = await self.session.execute(stmt)
+        user_id = result.scalar_one_or_none()
+
+        if user_id is None:
+            return None
+        stmt = (
+            select(UserORM)
+            .where(UserORM.id == user_id)
+            .options(selectinload(UserORM.tasks))
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one()

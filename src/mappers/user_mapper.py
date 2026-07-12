@@ -1,15 +1,13 @@
 from pwdlib import PasswordHash
 
-from src.models import UserORM, TaskORM
 from src.schemas.users_schemas import UserRequestSchema
 
 
-def to_user_orm(user: UserRequestSchema , tasks: list[TaskORM]) -> UserORM:
-    return UserORM(
-            username=user.username,
-            email=user.email,
-            hashed_password=PasswordHash.recommended().hash(user.password),
-            is_active=True,
-            is_deleted=False,
-            tasks=tasks,
-        )
+def schema_to_insert_dict(user_data: UserRequestSchema) -> dict:
+    return {
+        "username": user_data.username,
+        "email": user_data.email,
+        "hashed_password": PasswordHash.recommended().hash(user_data.password),
+        "is_active": True,
+        "is_deleted": False,
+    }

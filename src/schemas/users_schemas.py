@@ -3,7 +3,8 @@ from datetime import datetime
 from typing import Self
 
 from pydantic import BaseModel, Field, EmailStr, model_validator
-from src.schemas.base_schema import ChangeBaseSchema
+
+from src.exceptions import EmptyRequestBodyException, AtLeastOneFieldRequiredException
 from src.schemas.tasks_schemas import TaskGetSchema, TaskUpdateSchema, TaskRequestSchema, \
     TasksDeleteSchema
 
@@ -151,7 +152,7 @@ class UserResponse(BaseModel):
     description: str = Field(description="Описание результата")
 
 
-class UserUpdateWithTasksSchema(ChangeBaseSchema):
+class UserUpdateWithTasksSchema(BaseModel):
     id: uuid.UUID = Field(..., description="ID пользователя, которого обновляем")
     email: EmailStr | None = Field(None, description="Адрес эл.почты")
     username: str | None = Field(None, description="Имя пользователя")
@@ -159,6 +160,15 @@ class UserUpdateWithTasksSchema(ChangeBaseSchema):
     is_active: bool | None = Field(True, description="Статус пользователя")
     is_deleted: bool | None = Field(False, description="Пользователь удален")
     tasks: list[TaskUpdateSchema] = Field(default_factory=list, description="Список задач для обновления")
+
+    @model_validator(mode="after")
+    def check_at_least_one_field(self):
+        if not self.model_fields_set:
+            raise EmptyRequestBodyException('At least one field must be passed')
+
+        if all(value is None or value == "" for value in self.model_dump().values()):
+            raise AtLeastOneFieldRequiredException('At least one field must be filled in')
+        return self
 
 example_update_user_task = {
     "1": {

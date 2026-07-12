@@ -5,8 +5,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.clients.report_service_client import create_report_client
 from src.config import settings
+from src.exceptions import ExternalServiceUnavailableException
 from src.repositories.task_rep import TasksRepository
-from src.repositories.unit_of_work import UnitOfWork
+from src.database.unit_of_work import UnitOfWork
 from src.schemas.sync_worker_schemas import SyncStatsSchema
 from src.workers.celery_app import celery_instance
 from src.workers.report_sync_worker import ReportSyncWorker
@@ -15,11 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 @celery_instance.task(
-    name="src.workers.tasks.sync_reports_task",
     bind=True,
-    max_retries=3,
-    default_retry_delay=60,
     acks_late=True,
+    reject_on_worker_lost=True,
 )
 def sync_reports_task(self) -> dict:
     logger.info("Starting sync_reports_task")
@@ -29,13 +28,15 @@ def sync_reports_task(self) -> dict:
         logger.info("sync_reports_task completed", extra=stats.model_dump())
         return stats.model_dump()
 
-    except RuntimeError as e:
-        if "attached to a different loop" in str(e):
-            logger.warning(
-                "Event loop error detected, will retry",
-                extra={"error": str(e)},
-            )
-            raise self.retry(exc=e)
+    except ExternalServiceUnavailableException as e:
+        logger.error(
+            "Sync task failed: external service unavailable",
+            extra={
+                "error": e.detail,
+                "error_type": type(e).__name__,
+            },
+            exc_info=False,
+        )
         raise
 
     except Exception as e:
@@ -44,7 +45,7 @@ def sync_reports_task(self) -> dict:
             extra={"error": str(e)},
             exc_info=True,
         )
-        raise self.retry(exc=e)
+        raise
 
 
 async def _run_worker() -> SyncStatsSchema:

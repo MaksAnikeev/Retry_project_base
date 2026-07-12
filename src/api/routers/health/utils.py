@@ -6,7 +6,7 @@ from aiohttp import ClientTimeout
 from sqlalchemy import text
 
 from src.clients.report_service_client import ReportServiceClient
-from src.db import async_session_factory
+from src.database.db import async_session_factory
 
 logger = logging.getLogger(__name__)
 

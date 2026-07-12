@@ -6,22 +6,21 @@ from fastapi import HTTPException
 from pwdlib import PasswordHash
 
 from src.clients.report_service_client import ReportServiceClient
+from src.database.batch_refresh import batch_refresh
 from src.exceptions import (
     AlreadyExistsException,
     ExternalServiceUnavailableException,
     ObjectNotFoundException,
 )
 from src.exceptions.external_service import ExternalServiceClientException
-from src.mappers.task_mapper import to_task_api_request, to_task_orm
-from src.mappers.user_mapper import to_user_orm
+from src.mappers.task_mapper import to_task_api_request, to_task_orm, add_report_to_task
 from src.models.tasks import TaskORM
 from src.models.users import UserORM
-from src.repositories.unit_of_work import UnitOfWork
+from src.database.unit_of_work import UnitOfWork
 from src.repositories.user_rep import UsersRepository
-from src.schemas.base_schema import PaginationParamsSchema
+from src.schemas.pagination_schema import PaginationParamsSchema
 from src.schemas.tasks_schemas import (
     DeleteTasksStatsSchema,
-    ReportStatus,
     TaskAPIResponseSchema,
     TasksDeleteSchema,
 )
@@ -43,11 +42,11 @@ class UserTaskService:
     def __init__(
         self,
         user_rep: UsersRepository,
-        http_client: ReportServiceClient,
+        report_client: ReportServiceClient,
         uow: UnitOfWork,
     ) -> None:
         self.user_rep = user_rep
-        self.http_client = http_client
+        self.report_client = report_client
         self.uow = uow
         self.password_hash = PasswordHash.recommended()
 
@@ -57,9 +56,18 @@ class UserTaskService:
         self,
         user_data: UserRequestSchema,
     ) -> tuple[UserORM, list[TaskORM]]:
+        user_orm = await self.user_rep.upsert_user(user_data)
+        if user_orm is None:
+            self.logger.warning(
+                "Race condition detected: user with this email already exists",
+                extra={"email": user_data.email},
+            )
+            raise AlreadyExistsException(
+                detail=f"User with email {user_data.email} already exists"
+            ) from None
+
         new_tasks_orm = [to_task_orm(t) for t in user_data.tasks]
-        user_orm = to_user_orm(user=user_data, tasks=new_tasks_orm)
-        await self.user_rep.save_orm_object(user_orm)
+        user_orm.tasks.extend(new_tasks_orm)
         return user_orm, new_tasks_orm
 
     async def _fetch_reports(
@@ -67,10 +75,10 @@ class UserTaskService:
         tasks: list[TaskORM],
     ) -> dict[uuid.UUID, TaskAPIResponseSchema]:
         requests = [to_task_api_request(task) for task in tasks]
-        reports = await self.http_client.get_reports_batch(requests)
+        reports = await self.report_client.get_reports_batch(requests)
         return {r.task_id: r for r in reports}
 
-    def _apply_reports_to_tasks(
+    def _enrich_tasks_with_reports(
         self,
         tasks: list[TaskORM],
         reports_by_id: dict[uuid.UUID, TaskAPIResponseSchema],
@@ -78,11 +86,7 @@ class UserTaskService:
         for task in tasks:
             report = reports_by_id.get(task.id)
             if report is not None:
-                task.complexity = report.complexity
-                task.estimated_hours = report.estimated_hours
-                task.priority = report.priority
-                task.report_status = ReportStatus.COMPLETED.value
-
+                add_report_to_task(task=task, report=report)
                 self.logger.info(
                     "Task enriched with report",
                     extra={"task_id": str(task.id)},
@@ -93,7 +97,7 @@ class UserTaskService:
                     extra={"task_id": str(task.id)},
                 )
 
-    async def create_user_with_tasks(self, user_data: UserRequestSchema) -> UserResponse:
+    async def create_user_with_tasks(self, user_data: UserRequestSchema) -> UserTasksGetSchema:
         check_unique_email = await self.user_rep.one_or_none(email=user_data.email)
         if check_unique_email:
             self.logger.warning(
@@ -104,34 +108,23 @@ class UserTaskService:
 
         async with self.uow:
             user_orm, new_tasks_orm = await self._create_user_and_base_tasks(user_data)
-            await self.uow.flush_and_refresh(user_orm, *new_tasks_orm)
-            try:
-                reports_by_id = await self._fetch_reports(new_tasks_orm)
-                self._apply_reports_to_tasks(new_tasks_orm, reports_by_id)
-            except (ExternalServiceUnavailableException, ExternalServiceClientException) as e:
-                await self.uow.session.commit()
-                self.uow._is_active = False
-                self.logger.warning(
-                    "Report service failed, tasks saved as PENDING, will be filled by worker",
-                    extra={
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                        "user_id": str(user_orm.id),
-                    },
-                )
-                raise
+        self.logger.info(
+            "User and tasks created (status=PENDING)",
+            extra={
+                "user_id": str(user_orm.id),
+                "tasks_count": len(new_tasks_orm),
+            },
+        )
+        async with self.uow:
+            reports_by_id = await self._fetch_reports(new_tasks_orm)
+            self._enrich_tasks_with_reports(new_tasks_orm, reports_by_id)
 
-            self.logger.info(
-                "User and tasks created successfully",
-                extra={
-                    "user_id": str(user_orm.id),
-                    "tasks_count": len(new_tasks_orm),
-                },
-            )
-            return UserResponse(
-                status="OK",
-                description=f"Пользователь {user_orm.id} создан с {len(new_tasks_orm)} задачами",
-            )
+        self.logger.info(
+            "Tasks enriched with reports successfully",
+            extra={"user_id": str(user_orm.id)},
+        )
+
+        return UserTasksGetSchema.model_validate(user_orm, from_attributes=True)
 
     def _prepare_tasks_to_add(
         self,
@@ -166,10 +159,10 @@ class UserTaskService:
             )
         async with self.uow:
             existing_user.tasks.extend(new_tasks_to_add)
-            await self.uow.flush_and_refresh(existing_user, *new_tasks_to_add)
+            await batch_refresh(self.uow.session,existing_user, *new_tasks_to_add)
             try:
                 reports_by_id = await self._fetch_reports(new_tasks_to_add)
-                self._apply_reports_to_tasks(new_tasks_to_add, reports_by_id)
+                self._enrich_tasks_with_reports(new_tasks_to_add, reports_by_id)
             except (ExternalServiceUnavailableException, ExternalServiceClientException) as e:
                 await self.uow.session.commit()
                 self.uow._is_active = False

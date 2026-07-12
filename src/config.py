@@ -42,10 +42,6 @@ class Settings(BaseSettings):
     CB_RECOVERY_TIMEOUT_STANDARD: int
 
     # --------------------WORKER-------------------------
-    MAX_CONSECUTIVE_FAILURES: int
-    FAILURE_BACKOFF_SECONDS: int
-    CB_WAIT_SECONDS: int
-    MAX_CB_RETRIES: int
     BATCH_SIZE: int
 
 
