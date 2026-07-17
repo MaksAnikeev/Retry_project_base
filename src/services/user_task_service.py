@@ -1,34 +1,31 @@
-import http
 import logging
 import uuid
 
-from fastapi import HTTPException
 from pwdlib import PasswordHash
 
 from src.clients.report_service_client import ReportServiceClient
-from src.database.batch_refresh import batch_refresh
-from src.exceptions import (
-    AlreadyExistsException,
-    ExternalServiceUnavailableException,
-    ObjectNotFoundException,
+from src.database.unit_of_work import UnitOfWork
+from src.exceptions import AlreadyExistsException, ObjectNotFoundException
+from src.mappers.task_mapper import (
+    add_report_to_task,
+    to_task_api_request,
+    to_task_orm,
+    update_task_fields,
 )
-from src.exceptions.external_service import ExternalServiceClientException
-from src.mappers.task_mapper import to_task_api_request, to_task_orm, add_report_to_task
+from src.mappers.user_mapper import to_user_orm, update_user_fields
 from src.models.tasks import TaskORM
 from src.models.users import UserORM
-from src.database.unit_of_work import UnitOfWork
 from src.repositories.user_rep import UsersRepository
 from src.schemas.pagination_schema import PaginationParamsSchema
 from src.schemas.tasks_schemas import (
-    DeleteTasksStatsSchema,
     TaskAPIResponseSchema,
+    TaskRequestSchema,
     TasksDeleteSchema,
+    TaskUpdateSchema,
 )
 from src.schemas.users_schemas import (
     BulkDeletionResponseSchema,
-    ExistedUserRequestSchema,
     UserRequestSchema,
-    UserResponse,
     UsersTasksPaginatedResponse,
     UserTasksDeleteSchema,
     UserTasksGetSchema,
@@ -56,10 +53,10 @@ class UserTaskService:
         self,
         user_data: UserRequestSchema,
     ) -> tuple[UserORM, list[TaskORM]]:
-        user_orm = await self.user_rep.upsert_user(user_data)
-        if user_orm is None:
+        user_id = await self.user_rep.create_user_if_absent(to_user_orm(user_data))
+        if user_id is None:
             self.logger.warning(
-                "Race condition detected: user with this email already exists",
+                "User with this email already exists",
                 extra={"email": user_data.email},
             )
             raise AlreadyExistsException(
@@ -67,7 +64,8 @@ class UserTaskService:
             ) from None
 
         new_tasks_orm = [to_task_orm(t) for t in user_data.tasks]
-        user_orm.tasks.extend(new_tasks_orm)
+        user_orm = await self.user_rep.get_one_or_none_with_relationship(id=user_id)
+        user_orm.tasks = new_tasks_orm
         return user_orm, new_tasks_orm
 
     async def _fetch_reports(
@@ -83,29 +81,37 @@ class UserTaskService:
         tasks: list[TaskORM],
         reports_by_id: dict[uuid.UUID, TaskAPIResponseSchema],
     ) -> None:
+        enriched_count = 0
+        skipped_count = 0
         for task in tasks:
             report = reports_by_id.get(task.id)
             if report is not None:
                 add_report_to_task(task=task, report=report)
-                self.logger.info(
+                self.logger.debug(
                     "Task enriched with report",
                     extra={"task_id": str(task.id)},
                 )
+                enriched_count += 1
             else:
-                self.logger.info(
+                self.logger.debug(
                     "Report not returned for task, will be filled by worker",
                     extra={"task_id": str(task.id)},
                 )
+                skipped_count += 1
+        self.logger.info(
+            "Batch tasks enrichment completed",
+            extra={
+                "total_tasks": len(tasks),
+                "enriched_count": enriched_count,
+                "skipped_count": skipped_count,
+            },
+        )
+
+    async def _fetch_and_apply_reports(self, tasks: list[TaskORM]) -> None:
+        reports_by_id = await self._fetch_reports(tasks)
+        self._enrich_tasks_with_reports(tasks, reports_by_id)
 
     async def create_user_with_tasks(self, user_data: UserRequestSchema) -> UserTasksGetSchema:
-        check_unique_email = await self.user_rep.one_or_none(email=user_data.email)
-        if check_unique_email:
-            self.logger.warning(
-                "User with email already exists",
-                extra={"email": user_data.email},
-            )
-            raise AlreadyExistsException(detail=f"User with email {user_data.email} already exists")
-
         async with self.uow:
             user_orm, new_tasks_orm = await self._create_user_and_base_tasks(user_data)
         self.logger.info(
@@ -115,9 +121,10 @@ class UserTaskService:
                 "tasks_count": len(new_tasks_orm),
             },
         )
+        await self._fetch_and_apply_reports(new_tasks_orm)
+
         async with self.uow:
-            reports_by_id = await self._fetch_reports(new_tasks_orm)
-            self._enrich_tasks_with_reports(new_tasks_orm, reports_by_id)
+            await self.uow.session.flush()
 
         self.logger.info(
             "Tasks enriched with reports successfully",
@@ -126,67 +133,80 @@ class UserTaskService:
 
         return UserTasksGetSchema.model_validate(user_orm, from_attributes=True)
 
-    def _prepare_tasks_to_add(
-        self,
-        user_data: ExistedUserRequestSchema,
-        existing_user: UserORM,
-    ) -> list[TaskORM] | None:
+    async def _get_and_validate_user(self, user_id: uuid.UUID) -> UserORM:
+        user = await self.user_rep.get_one_or_none_with_relationship(id=user_id)
+        if not user:
+            self.logger.warning("User not found", extra={"user_id": str(user_id)})
+            raise ObjectNotFoundException(detail=f"User with id {user_id} not found")
+        return user
 
+    def _validate_tasks_update(
+        self, update_data: UserUpdateWithTasksSchema, existing_user: UserORM
+    ) -> None:
         existing_titles = {task.title for task in existing_user.tasks}
-        new_tasks_data = [t for t in user_data.tasks if t.title not in existing_titles]
-        if not new_tasks_data:
-            return None
-        return [to_task_orm(t) for t in new_tasks_data]
+        existing_ids = {task.id for task in existing_user.tasks}
+        for task_data in update_data.tasks:
+            if task_data.id:
+                if task_data.id not in existing_ids:
+                    raise ObjectNotFoundException(
+                        detail=f"Task with id {task_data.id} not found for this user"
+                    )
+                if task_data.title and task_data.title in existing_titles:
+                    current_task = next(t for t in existing_user.tasks if t.id == task_data.id)
+                    if task_data.title != current_task.title:  # Тайтл действительно меняется
+                        raise AlreadyExistsException(
+                            detail=f"Task with title '{task_data.title}' already exists"
+                        )
+            else:
+                if task_data.title in existing_titles:
+                    raise AlreadyExistsException(
+                        detail=f"Task with title '{task_data.title}' already exists"
+                    )
 
-    async def add_tasks_to_user(self, user_data: ExistedUserRequestSchema) -> UserResponse:
-        existing_user = await self.user_rep.get_one_or_none_with_relationship(id=user_data.id)
-        if not existing_user:
-            self.logger.warning(
-                "User with id not found",
-                extra={"id": user_data.id},
-            )
-            raise ObjectNotFoundException(detail=f"User with id {user_data.id} not found")
+    def _map_tasks_for_update(
+        self, update_data: UserUpdateWithTasksSchema
+    ) -> tuple[list[TaskORM], list[TaskUpdateSchema]]:
 
-        new_tasks_to_add = self._prepare_tasks_to_add(user_data, existing_user)
-        if not new_tasks_to_add:
-            self.logger.info(
-                "No new tasks to add",
-                extra={"user_id": str(existing_user.id)},
-            )
-            return UserResponse(
-                status="OK",
-                description=f"Задачи для пользователя с ид {existing_user.id} не переданы или уже существуют",
-            )
+        tasks_to_add_orm = []
+        tasks_to_update = []
+        for task_data in update_data.tasks:
+            if task_data.id:
+                tasks_to_update.append(task_data)
+            else:
+                valid_task = TaskRequestSchema.model_validate(task_data.model_dump())
+                tasks_to_add_orm.append(to_task_orm(valid_task))
+        return tasks_to_add_orm, tasks_to_update
+
+    async def update_user_and_tasks(
+        self, update_data: UserUpdateWithTasksSchema
+    ) -> UserTasksGetSchema:
+        existing_user = await self._get_and_validate_user(update_data.id)
+        self._validate_tasks_update(update_data, existing_user)
+        new_tasks_orm, tasks_to_update = self._map_tasks_for_update(update_data)
+
         async with self.uow:
-            existing_user.tasks.extend(new_tasks_to_add)
-            await batch_refresh(self.uow.session,existing_user, *new_tasks_to_add)
-            try:
-                reports_by_id = await self._fetch_reports(new_tasks_to_add)
-                self._enrich_tasks_with_reports(new_tasks_to_add, reports_by_id)
-            except (ExternalServiceUnavailableException, ExternalServiceClientException) as e:
-                await self.uow.session.commit()
-                self.uow._is_active = False
-                self.logger.warning(
-                    "Report service failed, tasks saved as PENDING, will be filled by worker",
-                    extra={
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                        "user_id": str(existing_user.id),
-                    },
-                )
-                raise
+            update_user_fields(update_data, existing_user, self.password_hash)
 
+            if new_tasks_orm:
+                existing_user.tasks.extend(new_tasks_orm)
+
+            if tasks_to_update:
+                existing_tasks_map = {task.id: task for task in existing_user.tasks}
+                for task_update in tasks_to_update:
+                    task_orm = existing_tasks_map[task_update.id]
+                    update_task_fields(task_update, task_orm)
+            await self.uow.session.flush()
+            await self.uow.session.refresh(existing_user)
+            response_schema = UserTasksGetSchema.model_validate(existing_user, from_attributes=True)
             self.logger.info(
-                "Tasks add to user successfully",
+                "User and tasks updated successfully",
                 extra={
                     "user_id": str(existing_user.id),
-                    "tasks_count": len(new_tasks_to_add),
+                    "tasks_added": len(new_tasks_orm),
+                    "tasks_updated": len(tasks_to_update),
                 },
             )
-            return UserResponse(
-                status="OK",
-                description=f"Пользователю с ид {existing_user.id} добавлено {len(new_tasks_to_add)} задач",
-            )
+        return response_schema
 
     async def get_user_by_id(self, user_id: uuid.UUID) -> UserTasksGetSchema:
         user = await self.user_rep.get_one_or_none_with_relationship(id=user_id)
@@ -214,148 +234,54 @@ class UserTaskService:
             next_cursor=next_cursor,
         )
 
-    async def update_user_and_tasks(
-        self, update_data: UserUpdateWithTasksSchema
-    ) -> UserTasksGetSchema:
-        async with self.uow:
-            user = await self.user_rep.get_one_or_none_with_relationship(id=update_data.id)
-            if not user:
-                self.logger.warning("User not found", extra={"user_id": str(update_data.id)})
-                raise ObjectNotFoundException(
-                    detail=f"User with user_id {str(update_data.id)} not found"
-                )
-
-            user_update_dict = update_data.model_dump(
-                exclude_unset=True, exclude={"id", "tasks", "password"}
-            )
-            for field, value in user_update_dict.items():
-                setattr(user, field, value)
-
-            if update_data.password:
-                hashed_password = self.password_hash.hash(update_data.password)
-                setattr(user, "hashed_password", hashed_password)
-
-            if update_data.tasks:
-                existing_tasks_map = {task.id: task for task in user.tasks}
-                existing_tasks_title = {task.title for task in user.tasks}
-
-                for task_update in update_data.tasks:
-                    if task_update.title in existing_tasks_title:
-                        self.logger.info(
-                            "Task already exists, skipping",
-                            extra={"user_id": str(user.id), "task_title": task_update.title},
-                        )
-                        continue
-
-                    if task_update.id not in existing_tasks_map:
-                        self.logger.warning(
-                            "Task not found for user",
-                            extra={"user_id": str(user.id), "task_id": str(task_update.id)},
-                        )
-                        raise HTTPException(
-                            status_code=http.HTTPStatus.NOT_FOUND,
-                            detail=f"Task with id {task_update.id} not found for this user",
-                        )
-
-                    task_orm = existing_tasks_map[task_update.id]
-                    task_update_dict = task_update.model_dump(exclude_unset=True, exclude={"id"})
-                    for field, value in task_update_dict.items():
-                        setattr(task_orm, field, value)
-
-            await self.uow.session.refresh(user)
-        self.logger.info("User and tasks updated successfully", extra={"user_id": str(user.id)})
-        return UserTasksGetSchema.model_validate(user, from_attributes=True)
-
     async def delete_users_tasks(
         self,
         delete_info: UserTasksDeleteSchema,
     ) -> BulkDeletionResponseSchema:
         async with self.uow:
-            tasks_stats = DeleteTasksStatsSchema()
+            deleted_tasks_count = 0
+            if delete_info.delete_tasks:
+                await self._delete_tasks_by_users(delete_info.delete_tasks)
+                deleted_tasks_count = len(set(delete_info.delete_tasks.task_ids))
+
             deleted_users_count = 0
-
-            try:
-                if delete_info.delete_tasks:
-                    tasks_stats = await self._delete_tasks_by_users(delete_info.delete_tasks)
-                    self.logger.info(
-                        "Tasks deletion completed",
-                        extra={
-                            "deleted_count": tasks_stats.deleted,
-                            "skipped_count": tasks_stats.skipped,
-                        },
-                    )
-
-                if delete_info.delete_users:
-                    deleted_users_count = await self.user_rep.delete_bulk_by_ids(
-                        delete_info.delete_users
-                    )
-                    self.logger.info("Users deleted", extra={"count": deleted_users_count})
-
-            except Exception as e:
-                self.logger.error("Bulk deletion failed", extra={"error": str(e)}, exc_info=True)
-                raise HTTPException(
-                    status_code=http.HTTPStatus.INTERNAL_SERVER_ERROR,
-                    detail=f"Ошибка при удалении: {str(e)}",
+            if delete_info.delete_users:
+                deleted_users_count = await self.user_rep.delete_bulk_by_ids(
+                    delete_info.delete_users
                 )
+                if deleted_users_count != len(set(delete_info.delete_users)):
+                    raise ObjectNotFoundException(
+                        detail="Один или несколько пользователей не найдены"
+                    )
 
         self.logger.info(
             "Bulk deletion completed successfully",
+            extra={
+                "deleted_tasks_count": deleted_tasks_count,
+                "deleted_users_count": deleted_users_count,
+            },
         )
         return BulkDeletionResponseSchema(
             status="success",
             message="Данные успешно удалены",
             deleted_users_count=deleted_users_count,
-            deleted_tasks_count=tasks_stats.deleted,
+            deleted_tasks_count=deleted_tasks_count,
         )
 
     async def _delete_tasks_by_users(
         self,
-        tasks_to_delete: list[TasksDeleteSchema],
-    ) -> DeleteTasksStatsSchema:
+        tasks_to_delete: TasksDeleteSchema,
+    ) -> None:
 
-        deleted_count = 0
-        skipped_count = 0
+        existing_user = await self._get_and_validate_user(user_id=tasks_to_delete.user_id)
+        existing_task_ids = {task.id for task in existing_user.tasks}
+        tasks_to_delete_ids = set(tasks_to_delete.task_ids)
 
-        tasks_by_user = {}
-        for task in tasks_to_delete:
-            if task.user_id not in tasks_by_user:
-                tasks_by_user[task.user_id] = []
-            tasks_by_user[task.user_id].append(task.task_id)
+        if not tasks_to_delete_ids.issubset(existing_task_ids):
+            raise ObjectNotFoundException(
+                detail=f"Одна или несколько задач не найдены у пользователя {existing_user.id}"
+            )
 
-        for user_id, task_ids in tasks_by_user.items():
-            user = await self.user_rep.get_one_or_none_with_relationship(id=user_id)
-
-            if user is None:
-                self.logger.warning(
-                    "User not found, skipping tasks deletion",
-                    extra={
-                        "user_id": str(user_id),
-                        "task_ids": [str(tid) for tid in task_ids],
-                    },
-                )
-                skipped_count += len(task_ids)
-                continue
-
-            task_by_id = {task.id: task for task in user.tasks}
-
-            for task_id in task_ids:
-                task_orm = task_by_id.get(task_id)
-                if task_orm:
-                    user.tasks.remove(task_orm)
-                    deleted_count += 1
-                else:
-                    self.logger.warning(
-                        "Task not found for user, skipping",
-                        extra={
-                            "user_id": str(user_id),
-                            "task_id": str(task_id),
-                        },
-                    )
-                    skipped_count += 1
-
-            await self.uow.session.flush()
-
-        return DeleteTasksStatsSchema(
-            deleted=deleted_count,
-            skipped=skipped_count,
-        )
+        for task in existing_user.tasks:
+            if task.id in tasks_to_delete_ids:
+                task.is_deleted = True

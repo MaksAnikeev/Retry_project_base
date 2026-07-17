@@ -29,6 +29,9 @@ class BaseRepository(Generic[Model, Schema]):
             select(self.model)
             .filter(*filters)
             .filter_by(**filter_by)
+            .with_for_update(
+                read=True,
+                skip_locked=True)
         )
         if cursor is not None:
             query = query.where(self.model.cursor_field < cursor)

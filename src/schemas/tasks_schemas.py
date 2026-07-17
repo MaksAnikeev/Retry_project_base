@@ -1,7 +1,7 @@
-from enum import Enum
-from typing import Self
 import uuid
 from datetime import date
+from enum import Enum
+from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -20,6 +20,7 @@ class TaskRequestSchema(BaseModel):
     description: str | None = Field(None, description="Описание задачи")
     finish_date: date = Field(..., description="Плановая дата выполнения задачи")
 
+
 class TaskGetSchema(BaseModel):
     id: uuid.UUID
     title: str = Field(..., description="Короткое название задачи")
@@ -27,14 +28,16 @@ class TaskGetSchema(BaseModel):
     finish_date: date = Field(..., description="Плановая дата выполнения задачи")
     done: bool = Field(False, description="Отметка о выполнении задачи")
     is_deleted: bool = Field(..., description="Задача удалена")
-    report_status: str = Field(..., description="Статус обработки задачи: pending, completed, failed")
+    report_status: str = Field(
+        ..., description="Статус обработки задачи: pending, completed, failed"
+    )
     complexity: str | None = Field(None, description="Сложность выполняемой задачи")
     estimated_hours: float | None = Field(None, description="Время на выполнение задачи")
     priority: str | None = Field(None, description="Статус важности задачи")
 
 
 class TaskUpdateSchema(BaseModel):
-    id: uuid.UUID = Field(..., description="ID задачи, которую обновляем")
+    id: uuid.UUID | None = Field(None, description="ID задачи, которую обновляем")
     user_id: uuid.UUID | None = Field(None, description="Новое ИД пользователя")
     title: str | None = Field(None, description="Новое короткое название задачи")
     description: str | None = Field(None, description="Описание задачи")
@@ -69,9 +72,4 @@ class TaskAPIResponseSchema(BaseModel):
 
 class TasksDeleteSchema(BaseModel):
     user_id: uuid.UUID = Field(..., description="ИД пользователя")
-    task_id: uuid.UUID = Field(..., description="ИД задачи")
-
-
-class DeleteTasksStatsSchema(BaseModel):
-    deleted: int = Field(default=0, description="Количество удалённых задач")
-    skipped: int = Field(default=0, description="Количество пропущенных задач")
+    task_ids: list[uuid.UUID] = Field(default_factory=list, description="ИД задач на удаление")

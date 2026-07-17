@@ -28,15 +28,11 @@ class ReportSyncWorker:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     async def run(self) -> SyncStatsSchema:
-        self.logger.info("Starting sync run", extra={"batch_size": self.batch_size})
+        self.logger.debug("Starting sync run", extra={"batch_size": self.batch_size})
         stats = SyncStatsSchema(processed=0, updated=0)
         while True:
             pending_tasks = await self._fetch_next_batch()
             if not pending_tasks:
-                self.logger.info(
-                    "No more pending tasks, sync completed",
-                    extra=stats.model_dump(),
-                )
                 break
 
             batch_stats = await self._process_batch(pending_tasks)
@@ -50,11 +46,6 @@ class ReportSyncWorker:
             tasks = await self.task_repo.get_tasks_pending_reports(
                 limit=self.batch_size,
             )
-
-        self.logger.info(
-            "Fetched pending tasks",
-            extra={"count": len(tasks)},
-        )
         return tasks
 
     async def _process_batch(self, tasks: list[TaskORM]) -> SyncStatsSchema:
@@ -62,7 +53,7 @@ class ReportSyncWorker:
         async with self.uow:
             updated_count = await self._enrich_tasks_with_reports(tasks, reports_by_id)
 
-        self.logger.info(
+        self.logger.debug(
             "Batch processed",
             extra={"batch_size": len(tasks), "updated_count": updated_count},
         )
@@ -84,30 +75,27 @@ class ReportSyncWorker:
         reports_by_id: dict[uuid.UUID, TaskAPIResponseSchema],
     ) -> int:
         updated_count = 0
+        skipped_task_ids = []
         for task in tasks:
             report = reports_by_id.get(task.id)
             if report is None:
-                self.logger.warning(
-                    "Report not returned for task, will retry later",
-                    extra={"task_id": str(task.id)},
-                )
+                skipped_task_ids.append(str(task.id))
                 continue
 
-            try:
-                async with self.uow.session.begin_nested():
-                    task.complexity = report.complexity
-                    task.estimated_hours = report.estimated_hours
-                    task.priority = report.priority
-                    task.report_status = ReportStatus.COMPLETED.value
-                    await self.uow.session.flush()
-                updated_count += 1
-            except Exception as e:
-                self.logger.error(
-                    "Failed to save task, will retry on next run",
-                    extra={
-                        "task_id": str(task.id),
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    },
-                )
+            async with self.uow.session.begin_nested():
+                task.complexity = report.complexity
+                task.estimated_hours = report.estimated_hours
+                task.priority = report.priority
+                task.report_status = ReportStatus.COMPLETED.value
+                await self.uow.session.flush()
+            updated_count += 1
+
+        if skipped_task_ids:
+            self.logger.warning(
+                "Tasks skipped due to missing reports",
+                extra={
+                    "skipped_count": len(skipped_task_ids),
+                    "skipped_task_ids": skipped_task_ids,
+                },
+            )
         return updated_count

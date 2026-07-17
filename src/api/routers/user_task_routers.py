@@ -5,15 +5,12 @@ from fastapi import APIRouter, Body
 from src.dependencies.dependencies import PaginationDep, UserTaskServiceDep
 from src.schemas.users_schemas import (
     BulkDeletionResponseSchema,
-    ExistedUserRequestSchema,
     UserRequestSchema,
-    UserResponse,
     UsersTasksPaginatedResponse,
     UserTasksDeleteSchema,
     UserTasksGetSchema,
     UserUpdateWithTasksSchema,
     example_add_user_task,
-    example_existed_user_add_task,
     example_update_user_task,
 )
 
@@ -44,15 +41,7 @@ async def add_user_tasks(
     return await service.create_user_with_tasks(user_data=user_data)
 
 
-@router.post("/user/tasks", summary="добавление задач существующему пользователю")
-async def add_tasks_to_existed_user(
-    service: UserTaskServiceDep,
-    user_data: ExistedUserRequestSchema = Body(openapi_examples=example_existed_user_add_task),
-) -> UserResponse:
-    return await service.add_tasks_to_user(user_data=user_data)
-
-
-@router.patch("", summary="Изменить информацию по пользователю или по его задачам")
+@router.patch("", summary="Изменить информацию по пользователю, добавить или изменить его задачи")
 async def edit_user_tasks(
     service: UserTaskServiceDep,
     update_data: UserUpdateWithTasksSchema = Body(openapi_examples=example_update_user_task),

@@ -1,11 +1,12 @@
 import logging
+from abc import ABC, abstractmethod
 from http import HTTPStatus
 from typing import Any
 
 import aiohttp
 
 
-class BaseHTTPClient:
+class BaseHTTPClient(ABC):
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -35,12 +36,10 @@ class BaseHTTPClient:
 
         raise exception
 
+    @abstractmethod
     def _create_exception(
         self,
         status: int,
         error_text: str,
         url: str,
-    ) -> Exception:
-        raise NotImplementedError(
-            "Subclass must implement _create_exception()"
-        )
+    ) -> Exception: ...

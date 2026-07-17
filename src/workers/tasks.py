@@ -21,22 +21,11 @@ logger = logging.getLogger(__name__)
     reject_on_worker_lost=True,
 )
 def sync_reports_task(self) -> dict:
-    logger.info("Starting sync_reports_task")
-
     try:
         stats = asyncio.run(_run_worker())
-        logger.info("sync_reports_task completed", extra=stats.model_dump())
         return stats.model_dump()
 
-    except ExternalServiceUnavailableException as e:
-        logger.error(
-            "Sync task failed: external service unavailable",
-            extra={
-                "error": e.detail,
-                "error_type": type(e).__name__,
-            },
-            exc_info=False,
-        )
+    except ExternalServiceUnavailableException:
         raise
 
     except Exception as e:
