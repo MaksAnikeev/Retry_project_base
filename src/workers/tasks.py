@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.clients.report_service_client import create_report_client
 from src.config import settings
-from src.exceptions import ExternalServiceUnavailableException
 from src.repositories.task_rep import TasksRepository
 from src.database.unit_of_work import UnitOfWork
 from src.schemas.sync_worker_schemas import SyncStatsSchema
@@ -24,9 +23,6 @@ def sync_reports_task(self) -> dict:
     try:
         stats = asyncio.run(_run_worker())
         return stats.model_dump()
-
-    except ExternalServiceUnavailableException:
-        raise
 
     except Exception as e:
         logger.error(
@@ -54,6 +50,7 @@ async def _run_worker() -> SyncStatsSchema:
             report_client=report_client,
             uow=uow,
             batch_size=settings.BATCH_SIZE,
+            max_batch_count=settings.MAX_BATCH_COUNT,
         )
         return await worker.run()
     finally:

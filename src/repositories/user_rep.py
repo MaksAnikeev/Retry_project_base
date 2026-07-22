@@ -19,6 +19,16 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
         query_result = await self.session.execute(query)
         return query_result.scalars().one_or_none()
 
+    async def is_email_taken(self, email: str, exclude_user_id: uuid.UUID) -> bool:
+        stmt = (
+            select(self.model.id)
+            .where(
+                self.model.email == email,
+                self.model.id != exclude_user_id
+        ))
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
 
     async def get_existed_tasks(self, user_data: UserRequestSchema) -> UserORM | None:
         query = select(self.model).filter_by(email=user_data.email).options(selectinload(self.model.tasks))
@@ -49,16 +59,6 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
 
         result = await self.session.execute(query)
         return list(result.scalars().unique().all())
-
-    async def delete_bulk_by_ids(self, user_ids: list[uuid.UUID]) -> int:
-        unique_ids = list(set(user_ids))
-        stmt = (
-            update(self.model)
-            .where(self.model.id.in_(unique_ids))
-            .values(is_deleted=True)
-        )
-        result = await self.session.execute(stmt)
-        return result.rowcount
 
     async def create_user_if_absent(self, user_orm: UserORM) -> uuid.UUID | None:
         mapper = inspect(UserORM)

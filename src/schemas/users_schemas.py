@@ -8,34 +8,41 @@ from src.exceptions import AtLeastOneFieldRequiredException, EmptyRequestBodyExc
 from src.schemas.tasks_schemas import (
     TaskGetSchema,
     TaskRequestSchema,
-    TasksDeleteSchema,
     TaskUpdateSchema,
 )
 
 
-class UserRequestSchema(BaseModel):
-    email: EmailStr = Field(..., description="Адрес эл.почты")
-    username: str | None = Field(None, description="Имя пользователя")
-    password: str = Field(..., description="Пароль")
-    tasks: list[TaskRequestSchema] = Field(
-        default_factory=list, description="Список задач для обновления"
-    )
-
+class UniqueTaskTitlesValidatorMixin:
     @model_validator(mode="after")
     def check_unique_task_titles(self) -> Self:
-        if not self.tasks:
+        tasks = getattr(self, "tasks", [])
+        if not tasks:
             return self
-        titles = [task.title for task in self.tasks]
+
+        titles = [task.title for task in tasks if task.title]
         seen: set[str] = set()
         duplicates: list[str] = []
+
         for title in titles:
             if title in seen and title not in duplicates:
                 duplicates.append(title)
             seen.add(title)
+
         if duplicates:
             raise ValueError(f"Duplicate task titles: {duplicates}")
         return self
 
+
+class UserBase(BaseModel):
+    email: EmailStr = Field(..., description="Адрес эл.почты")
+    username: str | None = Field(None, description="Имя пользователя")
+
+
+class UserRequestSchema(UserBase, UniqueTaskTitlesValidatorMixin):
+    password: str = Field(..., description="Пароль")
+    tasks: list[TaskRequestSchema] = Field(
+        default_factory=list, description="Список задач для обновления"
+    )
 
 example_add_user_task = {
     "1": {
@@ -70,17 +77,16 @@ example_add_user_task = {
 }
 
 
-class UserTasksGetSchema(BaseModel):
+class UserGetBase(BaseModel):
     id: uuid.UUID
     email: EmailStr = Field(..., description="Адрес эл.почты")
     username: str | None = Field(None, description="Имя пользователя")
     is_active: bool = Field(..., description="Статус пользователя")
     is_deleted: bool = Field(..., description="Пользователь удален")
     created_at: datetime = Field(..., description="Дата регистрации пользователя")
-    updated_at: datetime | None = Field(
-        None, description="Дата обновления информации о пользователе"
-    )
+    updated_at: datetime | None = Field(None, description="Дата обновления информации о пользователе")
 
+class UserTasksGetSchema(UserGetBase):
     tasks: list[TaskGetSchema] = Field(default_factory=list)
 
 
@@ -101,19 +107,11 @@ class UsersTasksPaginatedResponse(BaseModel):
     )
 
 
-class UserGetSchema(BaseModel):
-    id: uuid.UUID
-    email: EmailStr = Field(..., description="Адрес эл.почты")
-    username: str | None = Field(None, description="Имя пользователя")
-    is_active: bool = Field(..., description="Статус пользователя")
-    is_deleted: bool = Field(..., description="Пользователь удален")
-    created_at: datetime = Field(..., description="Дата регистрации пользователя")
-    updated_at: datetime | None = Field(
-        None, description="Дата обновления информации о пользователе"
-    )
+class UserGetSchema(UserGetBase):
+    pass
 
 
-class UserUpdateWithTasksSchema(BaseModel):
+class UserUpdateWithTasksSchema(BaseModel, UniqueTaskTitlesValidatorMixin):
     id: uuid.UUID = Field(..., description="ID пользователя, которого обновляем")
     email: EmailStr | None = Field(None, description="Адрес эл.почты")
     username: str | None = Field(None, description="Имя пользователя")
@@ -132,22 +130,6 @@ class UserUpdateWithTasksSchema(BaseModel):
         if all(value is None or value == "" for value in self.model_dump().values()):
             raise AtLeastOneFieldRequiredException("At least one field must be filled in")
         return self
-
-    @model_validator(mode="after")
-    def check_unique_task_titles(self) -> Self:
-        if not self.tasks:
-            return self
-        titles = [task.title for task in self.tasks]
-        seen: set[str] = set()
-        duplicates: list[str] = []
-        for title in titles:
-            if title in seen and title not in duplicates:
-                duplicates.append(title)
-            seen.add(title)
-        if duplicates:
-            raise ValueError(f"Duplicate task titles: {duplicates}")
-        return self
-
 
 example_update_user_task = {
     "1": {
@@ -203,15 +185,7 @@ example_update_user_task = {
 }
 
 
-class UserTasksDeleteSchema(BaseModel):
-    delete_users: list[uuid.UUID] = Field(
-        default_factory=list, description="ID пользователей для удаления"
-    )
-    delete_tasks: TasksDeleteSchema | None = Field(None, description="Задачи для удаления")
 
-
-class BulkDeletionResponseSchema(BaseModel):
-    status: str = Field(default="success", description="Статус выполнения операции")
-    message: str = Field(description="Человекочитаемое сообщение о результате")
-    deleted_users_count: int = Field(default=0, description="Количество удаленных пользователей")
-    deleted_tasks_count: int = Field(default=0, description="Количество удаленных задач")
+class DeletionResponseSchema(BaseModel):
+    status: str = Field(default="success", description="Статус операции")
+    message: str = Field(..., description="Сообщение о результате")

@@ -6,6 +6,7 @@ from src.schemas.tasks_schemas import (
     TaskRequestSchema,
     TaskUpdateSchema,
 )
+from src.schemas.users_schemas import UserUpdateWithTasksSchema
 
 
 def to_task_orm(task: TaskRequestSchema) -> TaskORM:
@@ -56,3 +57,18 @@ def update_task_fields(task_update_data: TaskUpdateSchema, task_orm: TaskORM) ->
 
     if task_update_data.priority is not None:
         task_orm.priority = task_update_data.priority
+
+
+def map_tasks_for_update(
+        update_data: UserUpdateWithTasksSchema
+    ) -> tuple[list[TaskORM], list[TaskUpdateSchema]]:
+
+        tasks_to_add_orm = []
+        tasks_to_update = []
+        for task_data in update_data.tasks:
+            if task_data.id:
+                tasks_to_update.append(task_data)
+            else:
+                valid_task = TaskRequestSchema.model_validate(task_data.model_dump())
+                tasks_to_add_orm.append(to_task_orm(valid_task))
+        return tasks_to_add_orm, tasks_to_update

@@ -1,7 +1,6 @@
 import uuid
 from datetime import date
 from enum import Enum
-from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -15,20 +14,21 @@ class ReportStatus(str, Enum):
         return self.value
 
 
-class TaskRequestSchema(BaseModel):
+class TaskBase(BaseModel):
     title: str = Field(..., description="Короткое название задачи")
     description: str | None = Field(None, description="Описание задачи")
     finish_date: date = Field(..., description="Плановая дата выполнения задачи")
 
 
-class TaskGetSchema(BaseModel):
+class TaskRequestSchema(TaskBase):
+    pass
+
+
+class TaskGetSchema(TaskBase):
     id: uuid.UUID
-    title: str = Field(..., description="Короткое название задачи")
-    description: str | None = Field(None, description="Описание задачи")
-    finish_date: date = Field(..., description="Плановая дата выполнения задачи")
     done: bool = Field(False, description="Отметка о выполнении задачи")
     is_deleted: bool = Field(..., description="Задача удалена")
-    report_status: str = Field(
+    report_status: ReportStatus = Field(
         ..., description="Статус обработки задачи: pending, completed, failed"
     )
     complexity: str | None = Field(None, description="Сложность выполняемой задачи")
@@ -48,28 +48,13 @@ class TaskUpdateSchema(BaseModel):
     priority: str | None = Field(None, description="Статус задачи")
 
 
-class TaskAPIRequestSchema(BaseModel):
+class TaskAPIRequestSchema(TaskBase):
     task_id: uuid.UUID = Field(..., description="ИД задачи")
     user_id: uuid.UUID = Field(..., description="ИД пользователя")
-    title: str = Field(..., description="Короткое название задачи")
-    description: str | None = Field(None, description="Описание задачи")
-    finish_date: date = Field(..., description="Плановая дата выполнения задачи")
 
 
 class TaskAPIResponseSchema(BaseModel):
     task_id: uuid.UUID = Field(..., description="ИД задачи")
-    complexity: str = Field(..., description="Сложность выполняемой задачи")
-    estimated_hours: float = Field(..., description="Время на выполнение задачи")
-    priority: str = Field(..., description="Статус задачи")
-
-    @model_validator(mode="after")
-    def normalize(self) -> Self:
-        self.complexity = self.complexity or "easy"
-        self.estimated_hours = self.estimated_hours or 2.0
-        self.priority = self.priority or "medium"
-        return self
-
-
-class TasksDeleteSchema(BaseModel):
-    user_id: uuid.UUID = Field(..., description="ИД пользователя")
-    task_ids: list[uuid.UUID] = Field(default_factory=list, description="ИД задач на удаление")
+    complexity: str = Field(default="easy", description="Сложность выполняемой задачи")
+    estimated_hours: float = Field(default=2.0, description="Время на выполнение задачи")
+    priority: str = Field(default="medium", description="Статус задачи")

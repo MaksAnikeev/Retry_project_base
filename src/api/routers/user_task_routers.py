@@ -1,13 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Query
 
 from src.dependencies.dependencies import PaginationDep, UserTaskServiceDep
 from src.schemas.users_schemas import (
-    BulkDeletionResponseSchema,
     UserRequestSchema,
     UsersTasksPaginatedResponse,
-    UserTasksDeleteSchema,
+    DeletionResponseSchema,
     UserTasksGetSchema,
     UserUpdateWithTasksSchema,
     example_add_user_task,
@@ -49,8 +48,19 @@ async def edit_user_tasks(
     return await service.update_user_and_tasks(update_data=update_data)
 
 
-@router.delete("", summary="Удалить пользователей или его задачи по ИД")
-async def del_users_tasks(
-    service: UserTaskServiceDep, delete_info: UserTasksDeleteSchema
-) -> BulkDeletionResponseSchema:
-    return await service.delete_users_tasks(delete_info=delete_info)
+@router.delete(
+    "/{user_id}",
+    summary="Удалить пользователя или его конкретные задачи"
+)
+async def delete_user_or_tasks(
+    service: UserTaskServiceDep,
+    user_id: uuid.UUID,
+    task_ids: list[uuid.UUID] | None = Query(
+        default=None,
+        description="Список ID задач для удаления. Если не указан, будет удален сам пользователь (и все его задачи)."
+    )
+) -> DeletionResponseSchema:
+    return await service.delete_user_or_tasks(
+        user_id=user_id,
+        task_ids=task_ids
+    )

@@ -1,7 +1,6 @@
 from http import HTTPStatus
 
 import aiohttp
-import circuitbreaker
 
 from src.clients.base_http_client import BaseHTTPClient
 from src.config import settings
@@ -17,6 +16,13 @@ from src.utils.retry_client import retry_standard
 
 
 class ReportServiceClient(BaseHTTPClient):
+    _ERROR_MAPPING: dict[int, type[BaseDomainException]] = {
+        HTTPStatus.TOO_MANY_REQUESTS: ExternalServiceUnavailableException,
+        HTTPStatus.NOT_FOUND: ObjectNotFoundException,
+        HTTPStatus.BAD_GATEWAY: ExternalServiceUnavailableException,
+        HTTPStatus.SERVICE_UNAVAILABLE: ExternalServiceUnavailableException,
+        HTTPStatus.GATEWAY_TIMEOUT: ExternalServiceUnavailableException,
+    }
 
     def __init__(
         self,
@@ -27,14 +33,6 @@ class ReportServiceClient(BaseHTTPClient):
         self.base_url = base_url.rstrip("/")
         self._default_timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: aiohttp.ClientSession | None = None
-
-        self._error_mapping: dict[int, type[BaseDomainException]] = {
-            HTTPStatus.TOO_MANY_REQUESTS: ExternalServiceUnavailableException,
-            HTTPStatus.NOT_FOUND: ObjectNotFoundException,
-            HTTPStatus.BAD_GATEWAY: ExternalServiceUnavailableException,
-            HTTPStatus.SERVICE_UNAVAILABLE: ExternalServiceUnavailableException,
-            HTTPStatus.GATEWAY_TIMEOUT: ExternalServiceUnavailableException,
-        }
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -53,7 +51,7 @@ class ReportServiceClient(BaseHTTPClient):
         url: str,
     ) -> Exception:
 
-        exception_class = self._error_mapping.get(status)
+        exception_class = self._ERROR_MAPPING.get(status)
 
         if exception_class is not None:
             return exception_class(detail=f"HTTP {status}: {error_text[:200]}")
@@ -79,17 +77,7 @@ class ReportServiceClient(BaseHTTPClient):
                 response_data = await self._handle_response(response, url)
                 return [TaskAPIResponseSchema(**item) for item in response_data]
 
-        except circuitbreaker.CircuitBreakerError:
-            raise ExternalServiceUnavailableException(
-                detail="Service temporarily unavailable (circuit breaker open)"
-            )
-
         except (TimeoutError, aiohttp.ClientError) as e:
-            self.logger.warning(
-                "Network error calling external service",
-                extra={"url": url, "error_type": type(e).__name__},
-                exc_info=False,
-            )
             raise ExternalServiceUnavailableException(detail=f"Network error: {type(e).__name__}")
 
 

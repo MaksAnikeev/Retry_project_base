@@ -3,102 +3,91 @@ import logging
 import sys
 from datetime import datetime
 
+from src.database.db import settings
+
 
 class Colors:
     RESET = "\033[0m"
     BOLD = "\033[1m"
-
-    DEBUG = "\033[36m"  # Cyan
-    INFO = "\033[32m"  # Green
-    WARNING = "\033[33m"  # Yellow
-    ERROR = "\033[31m"  # Red
+    DEBUG = "\033[36m"       # Cyan
+    INFO = "\033[32m"        # Green
+    WARNING = "\033[33m"     # Yellow
+    ERROR = "\033[31m"       # Red
     CRITICAL = "\033[1;31m"  # Bold Red
-    TIMESTAMP = "\033[90m"  # Dark Gray
-    LOGGER = "\033[35m"  # Magenta
-    EXTRA_KEY = "\033[34m"  # Blue
+    TIMESTAMP = "\033[90m"   # Dark Gray
+    LOGGER = "\033[35m"      # Magenta
+    EXTRA_KEY = "\033[34m"   # Blue
     EXTRA_VALUE = "\033[0m"  # Reset
 
-
-class PrettyFormatter(logging.Formatter):
     LEVEL_COLORS = {
-        logging.DEBUG: Colors.DEBUG,
-        logging.INFO: Colors.INFO,
-        logging.WARNING: Colors.WARNING,
-        logging.ERROR: Colors.ERROR,
-        logging.CRITICAL: Colors.CRITICAL,
+        logging.DEBUG: DEBUG,
+        logging.INFO: INFO,
+        logging.WARNING: WARNING,
+        logging.ERROR: ERROR,
+        logging.CRITICAL: CRITICAL,
     }
 
-    def __init__(self, use_colors: bool = True):
+
+class BaseLogFormatter(logging.Formatter):
+
+    STANDARD_FIELDS = {
+        'name', 'msg', 'args', 'created', 'filename', 'funcName',
+        'levelname', 'levelno', 'lineno', 'module', 'msecs',
+        'message', 'pathname', 'process', 'processName', 'relativeCreated',
+        'thread', 'threadName', 'exc_info', 'exc_text', 'stack_info', 'taskName',
+        'asctime',
+    }
+
+    def get_extras_dict(self, record: logging.LogRecord) -> dict:
+        return {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in self.STANDARD_FIELDS and not key.startswith("_") and value is not None
+        }
+
+    def _format_value_for_text(self, value: object, max_len: int = 200) -> str:
+        val_str = (
+            json.dumps(value, ensure_ascii=False, default=str)
+            if isinstance(value, (dict, list))
+            else str(value)
+        )
+        return val_str if len(val_str) <= max_len else val_str[:max_len - 3] + "..."
+
+
+class PrettyFormatter(BaseLogFormatter):
+
+    def __init__(self):
         super().__init__()
-        self.use_colors = use_colors
 
     def format(self, record: logging.LogRecord) -> str:
         timestamp = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")
         level = f"{record.levelname}:"
-        level_color = self.LEVEL_COLORS.get(record.levelno, "")
+        level_color = Colors.LEVEL_COLORS.get(record.levelno, "")
 
-        logger_name = record.name
+        parts = [
+            f"{level_color}{level:<8}{Colors.RESET}",
+            f"{Colors.LOGGER}{record.name}{Colors.RESET}",
+            "|",
+            record.getMessage(),
+            "|",
+            f"{Colors.TIMESTAMP}{timestamp}{Colors.RESET}"
+        ]
 
-        message = record.getMessage()
-
-        extras = self._format_extras(record)
-
-        if self.use_colors:
-            parts = [
-                f"{level_color}{level:<8}{Colors.RESET}",
-                f"{Colors.LOGGER}{logger_name}{Colors.RESET}",
-                "|",
-                message,
-                "|",
-                f"{Colors.TIMESTAMP}{timestamp}{Colors.RESET}"
-            ]
-            if extras:
-                parts.append(f"| {extras}")
-        else:
-            parts = [
-                timestamp,
-                "|",
-                f"{level:<8}",
-                "|",
-                logger_name,
-                "|",
-                message,
-            ]
-            if extras:
-                parts.append(f"| {extras}")
+        extras = self.get_extras_dict(record)
+        if extras:
+            extras_str = " | ".join(
+                f"{Colors.EXTRA_KEY}{key}{Colors.RESET}={Colors.EXTRA_VALUE}{self._format_value_for_text(value, max_len=100)}"
+                for key, value in extras.items()
+            )
+            parts.append(f"| {extras_str}")
 
         result = " ".join(parts)
-
         if record.exc_info:
             result += "\n" + self.formatException(record.exc_info)
-
         return result
 
-    def _format_extras(self, record: logging.LogRecord) -> str:
-        """Форматирует extra-поля"""
-        standard_fields = {
-            'name', 'msg', 'args', 'created', 'filename', 'funcName',
-            'levelname', 'levelno', 'lineno', 'module', 'msecs',
-            'message', 'pathname', 'process', 'processName', 'relativeCreated',
-            'thread', 'threadName', 'exc_info', 'exc_text', 'stack_info', 'taskName'
-        }
 
-        extras = []
-        for key, value in record.__dict__.items():
-            if key not in standard_fields and value is not None:
-                value_str = str(value)
-                if len(value_str) > 100:
-                    value_str = value_str[:97] + "..."
-
-                if self.use_colors:
-                    extras.append(f"{Colors.EXTRA_KEY}{key}{Colors.RESET}={Colors.EXTRA_VALUE}{value_str}")
-                else:
-                    extras.append(f"{key}={value_str}")
-
-        return " | ".join(extras)
-
-
-class JsonFormatter(logging.Formatter):
+class JsonFormatter(BaseLogFormatter):
    def format(self, record: logging.LogRecord) -> str:
         log_data = {
             "level": record.levelname,
@@ -106,17 +95,7 @@ class JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
             "timestamp": datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S"),
         }
-
-        standard_fields = {
-            'name', 'msg', 'args', 'created', 'filename', 'funcName',
-            'levelname', 'levelno', 'lineno', 'module', 'msecs',
-            'message', 'pathname', 'process', 'processName', 'relativeCreated',
-            'thread', 'threadName', 'exc_info', 'exc_text', 'stack_info', 'taskName'
-        }
-
-        for key, value in record.__dict__.items():
-            if key not in standard_fields and value is not None:
-                log_data[key] = value
+        log_data.update(self.get_extras_dict(record))
 
         if record.exc_info:
             log_data['exc_info'] = self.formatException(record.exc_info)
@@ -125,7 +104,15 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup_logging(level: str = "INFO") -> None:
-    formatter = PrettyFormatter()
+    if settings.LOG_FORMAT_TYPE == "pretty":
+        formatter = PrettyFormatter()
+    elif settings.LOG_FORMAT_TYPE ==  "json":
+        formatter = JsonFormatter()
+    else:
+        formatter = logging.Formatter(
+            fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
@@ -141,3 +128,7 @@ def setup_logging(level: str = "INFO") -> None:
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("celery").setLevel(logging.INFO)
+
+
+

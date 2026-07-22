@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     REPORT_SERVICE_TIMEOUT: int
 
     LOG_LEVEL: str = "INFO"
+    LOG_FORMAT_TYPE: str = ""
 
     REDIS_URL: str
 
@@ -43,7 +44,7 @@ class Settings(BaseSettings):
 
     # --------------------WORKER-------------------------
     BATCH_SIZE: int
-
+    MAX_BATCH_COUNT: int
 
     @property
     def DATABASE_URL_asyncpg(self) -> str:
