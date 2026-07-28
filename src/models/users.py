@@ -15,8 +15,7 @@ class UserORM(Base):
     username: Mapped[str] = mapped_column(String(), nullable=True)
     email: Mapped[str] = mapped_column(
         String(200), nullable=False, unique=True)
-    is_active: Mapped[bool] = mapped_column(Boolean)
-    is_deleted: Mapped[bool] = mapped_column(Boolean)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     hashed_password: Mapped[str] = mapped_column(String(200), nullable=False)
 
     tasks: Mapped[list["TaskORM"]] = relationship(

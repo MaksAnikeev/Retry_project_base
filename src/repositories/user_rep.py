@@ -2,7 +2,7 @@ from datetime import datetime
 import uuid
 from typing import Any, Sequence
 
-from sqlalchemy import select, update, inspect
+from sqlalchemy import select, update, inspect, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
@@ -73,3 +73,20 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
 
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def acquire_user_lock(self, user_id: uuid.UUID) -> None:
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('user:' || :user_id)::bigint)"),
+            {"user_id": str(user_id)}
+        )
+
+    async def acquire_email_lock(self, email: str) -> None:
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('email:' || :email)::bigint)"),
+            {"email": email.lower().strip()}
+        )
+
+    async def save_and_refresh(self, user_orm: UserORM) -> UserORM:
+        await self.session.flush()
+        await self.session.refresh(user_orm, attribute_names=['tasks'])
+        return user_orm

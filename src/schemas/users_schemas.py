@@ -40,6 +40,8 @@ class UserBase(BaseModel):
 
 class UserRequestSchema(UserBase, UniqueTaskTitlesValidatorMixin):
     password: str = Field(..., description="Пароль")
+    is_active: bool = Field(True, description="Статус пользователя")
+    is_deleted: bool = Field(False, description="Пользователь удален")
     tasks: list[TaskRequestSchema] = Field(
         default_factory=list, description="Список задач для обновления"
     )

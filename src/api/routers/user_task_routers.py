@@ -55,7 +55,7 @@ async def edit_user_tasks(
 async def delete_user_or_tasks(
     service: UserTaskServiceDep,
     user_id: uuid.UUID,
-    task_ids: list[uuid.UUID] | None = Query(
+    task_ids: set[uuid.UUID] | None = Query(
         default=None,
         description="Список ID задач для удаления. Если не указан, будет удален сам пользователь (и все его задачи)."
     )

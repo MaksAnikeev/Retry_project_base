@@ -61,9 +61,9 @@ class ReportServiceClient(BaseHTTPClient):
 
         return ExternalServiceClientException(detail=f"Invalid request: {error_text[:200]}")
 
-    @circuit_breaker_standard
     @retry_standard
-    async def get_reports_batch(
+    @circuit_breaker_standard
+    async def post_reports_batch(
         self,
         tasks: list[TaskAPIRequestSchema],
     ) -> list[TaskAPIResponseSchema]:

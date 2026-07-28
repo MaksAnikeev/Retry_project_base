@@ -21,7 +21,7 @@ class TaskBase(BaseModel):
 
 
 class TaskRequestSchema(TaskBase):
-    pass
+    done: bool = Field(False, description="Статус выполнения задачи")
 
 
 class TaskGetSchema(TaskBase):
@@ -42,7 +42,7 @@ class TaskUpdateSchema(BaseModel):
     title: str | None = Field(None, description="Новое короткое название задачи")
     description: str | None = Field(None, description="Описание задачи")
     finish_date: date | None = Field(None, description="Новая плановая дата выполнения задачи")
-    done: bool | None = Field(None, description="Отметка о выполнении задачи")
+    done: bool = Field(False, description="Отметка о выполнении задачи")
     complexity: str | None = Field(None, description="Сложность выполняемой задачи")
     estimated_hours: float | None = Field(None, description="Время на выполнение задачи")
     priority: str | None = Field(None, description="Статус задачи")

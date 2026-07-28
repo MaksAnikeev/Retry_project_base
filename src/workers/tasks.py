@@ -34,15 +34,14 @@ def sync_reports_task(self) -> dict:
 
 
 async def _run_worker() -> SyncStatsSchema:
-    engine = create_async_engine(
-        settings.DATABASE_URL_asyncpg,
-        pool_pre_ping=True,
-    )
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    session = session_factory()
-    report_client = create_report_client()
-
     try:
+        engine = create_async_engine(
+            settings.DATABASE_URL_asyncpg,
+            pool_pre_ping=True,
+        )
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        session = session_factory()
+        report_client = create_report_client()
         uow = UnitOfWork(session=session)
         task_repo = TasksRepository(session=session)
         worker = ReportSyncWorker(
@@ -54,6 +53,9 @@ async def _run_worker() -> SyncStatsSchema:
         )
         return await worker.run()
     finally:
-        await session.close()
-        await engine.dispose()
-        await report_client.close()
+        if report_client is not None:
+            await report_client.close()
+        if session is not None:
+            await session.close()
+        if engine is not None:
+            await engine.dispose()

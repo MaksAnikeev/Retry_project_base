@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 import circuitbreaker
 
 from src.clients.report_service_client import ReportServiceClient
+from src.database.unit_of_work import UnitOfWork
 from src.exceptions import ExternalServiceUnavailableException
 from src.exceptions.external_service import ExternalServiceClientException
 from src.mappers.task_mapper import to_task_api_request
 from src.repositories.task_rep import TasksRepository
-from src.database.unit_of_work import UnitOfWork
 from src.schemas.sync_worker_schemas import SyncStatsSchema
 from src.schemas.tasks_schemas import ReportStatus, TaskAPIResponseSchema
 
@@ -37,9 +37,10 @@ class ReportSyncWorker:
         self.logger.debug("Starting sync run", extra={"batch_size": self.batch_size})
         stats = SyncStatsSchema(processed=0, updated=0)
         batch_count = 0
+        cursor_id = None
         while batch_count < self.max_batch_count:
             try:
-                pending_tasks = await self._fetch_next_batch()
+                pending_tasks = await self._fetch_next_batch(cursor_id)
                 if not pending_tasks:
                     break
 
@@ -47,6 +48,8 @@ class ReportSyncWorker:
                 stats.processed += batch_stats.processed
                 stats.updated += batch_stats.updated
                 batch_count += 1
+
+                cursor_id = pending_tasks[-1].id
 
             except ExternalServiceClientException as e:
                 self.logger.warning(
@@ -58,26 +61,28 @@ class ReportSyncWorker:
             except ExternalServiceUnavailableException as e:
                 self.logger.error(
                     "External service unavailable, stopping sync run",
-                    extra={"batch_number": batch_count + 1, "error": str(e)},
+                    extra={"stats": stats.model_dump(), "error": str(e)},
                 )
-                break
+                raise
             except circuitbreaker.CircuitBreakerError as e:
                 self.logger.error(
                     "Circuit breaker is OPEN - service temporarily unavailable",
                     extra={
+                        "stats": stats.model_dump(),
                         "error": str(e),
                         "error_type": type(e).__name__,
                     },
                     exc_info=False,
                 )
-                break
+                raise
         self.logger.info("Sync run finished", extra=stats.model_dump())
         return stats
 
-    async def _fetch_next_batch(self) -> list[TaskORM]:
+    async def _fetch_next_batch(self, cursor_id: uuid.UUID | None = None) -> list[TaskORM]:
         async with self.uow:
             tasks = await self.task_repo.get_tasks_pending_reports(
                 limit=self.batch_size,
+                cursor_id=cursor_id,
             )
         return tasks
 
@@ -98,7 +103,7 @@ class ReportSyncWorker:
         tasks: list[TaskORM],
     ) -> dict[uuid.UUID, TaskAPIResponseSchema]:
         requests = [to_task_api_request(task) for task in tasks]
-        reports = await self.report_client.get_reports_batch(requests)
+        reports = await self.report_client.post_reports_batch(requests)
         return {r.task_id: r for r in reports}
 
     async def _enrich_tasks_with_reports(
@@ -128,8 +133,5 @@ class ReportSyncWorker:
                     "sample_skipped_task_ids": skipped_task_ids[:5],
                 },
             )
-        if updated_count > 0:
-            await self.uow.session.flush()
-
         return updated_count
 

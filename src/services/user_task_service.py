@@ -3,33 +3,34 @@ import uuid
 
 import circuitbreaker
 from pwdlib import PasswordHash
-from sqlalchemy import text
 
 from src.clients.report_service_client import ReportServiceClient
 from src.database.unit_of_work import UnitOfWork
-from src.exceptions import AlreadyExistsException, ObjectNotFoundException, ExternalServiceUnavailableException
-from src.exceptions.external_service import ExternalServiceClientException
+from src.exceptions import (
+    AlreadyExistsException,
+    ExternalServiceUnavailableException,
+    ObjectNotFoundException,
+)
 from src.mappers.task_mapper import (
     add_report_to_task,
+    split_tasks_by_type,
     to_task_api_request,
     to_task_orm,
-    update_task_fields,
-    map_tasks_for_update,
+    update_tasks_fields,
 )
 from src.mappers.user_mapper import to_user_orm, update_user_fields
 from src.models.tasks import TaskORM
 from src.models.users import UserORM
 from src.repositories.user_rep import UsersRepository
 from src.schemas.pagination_schema import PaginationParamsSchema
-from src.schemas.tasks_schemas import (
-    TaskAPIResponseSchema
-)
+from src.schemas.tasks_schemas import TaskAPIResponseSchema
 from src.schemas.users_schemas import (
+    DeletionResponseSchema,
     UserRequestSchema,
     UsersTasksPaginatedResponse,
     UserTasksGetSchema,
     UserTasksShortGetSchema,
-    UserUpdateWithTasksSchema, DeletionResponseSchema,
+    UserUpdateWithTasksSchema,
 )
 
 
@@ -73,7 +74,7 @@ class UserTaskService:
         tasks: list[TaskORM],
     ) -> dict[uuid.UUID, TaskAPIResponseSchema]:
         requests = [to_task_api_request(task) for task in tasks]
-        reports = await self.report_client.get_reports_batch(requests)
+        reports = await self.report_client.post_reports_batch(requests)
         return {r.task_id: r for r in reports}
 
     def _enrich_tasks_with_reports(
@@ -81,27 +82,9 @@ class UserTaskService:
         tasks: list[TaskORM],
         reports_by_id: dict[uuid.UUID, TaskAPIResponseSchema],
     ) -> None:
-        if len(tasks) != len(reports_by_id):
-            self.logger.error(
-                "Mismatch between requested tasks and received reports",
-                extra={
-                    "requested_tasks_count": len(tasks),
-                    "received_reports_count": len(reports_by_id),
-                    "task_ids": [str(t.id) for t in tasks],
-                },
-            )
-            raise ExternalServiceClientException(
-                detail=f"Несоответствие данных: запрошено {len(tasks)} задач, получено {len(reports_by_id)} отчетов"
-            )
         for task in tasks:
             report = reports_by_id.get(task.id)
-            if report is None:
-                raise ExternalServiceClientException(
-                    detail=f"Отчет для задачи {task.id} отсутствует в ответе сервиса"
-                )
             add_report_to_task(task=task, report=report)
-
-
 
     async def _fetch_and_apply_reports(self, tasks: list[TaskORM], user_orm: UserORM) -> None:
         try:
@@ -132,13 +115,14 @@ class UserTaskService:
                     "error": str(e),
                 },
             )
-            raise
+            pass
 
     async def create_user_with_tasks(self, user_data: UserRequestSchema) -> UserTasksGetSchema:
         new_email = str(user_data.email).lower().strip()
         async with self.uow:
-            await self._acquire_email_lock(new_email)
+            await self.user_rep.acquire_email_lock(new_email)
             user_orm, new_tasks_orm = await self._create_user_and_base_tasks(user_data, new_email)
+
         self.logger.info(
             "User and tasks created (status=PENDING)",
             extra={
@@ -150,11 +134,6 @@ class UserTaskService:
 
         async with self.uow:
             await self.uow.session.flush()
-
-        self.logger.info(
-            "Tasks enriched with reports successfully",
-            extra={"user_id": str(user_orm.id)},
-        )
 
         return UserTasksGetSchema.model_validate(user_orm, from_attributes=True)
 
@@ -188,18 +167,6 @@ class UserTaskService:
                         detail=f"Task with title '{task_data.title}' already exists"
                     )
 
-    async def _acquire_user_lock(self, user_id: uuid.UUID) -> None:
-        await self.uow.session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext('user:' || :user_id)::bigint)"),
-            {"user_id": str(user_id)}
-        )
-
-    async def _acquire_email_lock(self, email: str) -> None:
-        await self.uow.session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext('email:' || :email)::bigint)"),
-            {"email": email.lower().strip()}
-        )
-
     async def _validate_and_lock_email(
         self,
         update_data: UserUpdateWithTasksSchema,
@@ -208,7 +175,7 @@ class UserTaskService:
         if update_data.email is not None:
             new_email = str(update_data.email).lower().strip()
             if new_email != existing_user.email:
-                await self._acquire_email_lock(new_email)
+                await self.user_rep.acquire_email_lock(new_email)
                 email_exists = await self.user_rep.is_email_taken(
                     email=new_email,
                     exclude_user_id=update_data.id
@@ -229,13 +196,12 @@ class UserTaskService:
         self, update_data: UserUpdateWithTasksSchema
     ) -> UserTasksGetSchema:
         async with self.uow:
-            await self._acquire_user_lock(update_data.id)
+            await self.user_rep.acquire_user_lock(update_data.id)
             existing_user = await self._get_and_validate_user(update_data.id)
             await self._validate_and_lock_email(update_data, existing_user)
 
             self._validate_tasks_update(update_data, existing_user)
-            new_tasks_orm, tasks_to_update = map_tasks_for_update(update_data)
-
+            new_tasks_orm, tasks_to_update = split_tasks_by_type(update_data)
 
             update_user_fields(update_data, existing_user, self.password_hash)
 
@@ -243,22 +209,10 @@ class UserTaskService:
                 existing_user.tasks.extend(new_tasks_orm)
 
             if tasks_to_update:
-                existing_tasks_map = {task.id: task for task in existing_user.tasks}
-                for task_update in tasks_to_update:
-                    task_orm = existing_tasks_map[task_update.id]
-                    update_task_fields(task_update, task_orm)
-            await self.uow.session.flush()
-            await self.uow.session.refresh(existing_user)
-            response_schema = UserTasksGetSchema.model_validate(existing_user, from_attributes=True)
+                update_tasks_fields(tasks_to_update, existing_user)
 
-        self.logger.info(
-            "User and tasks updated successfully",
-            extra={
-                "user_id": str(existing_user.id),
-                "tasks_added": len(new_tasks_orm),
-                "tasks_updated": len(tasks_to_update),
-            },
-        )
+            updated_user = await self.user_rep.save_and_refresh(existing_user)
+            response_schema = UserTasksGetSchema.model_validate(updated_user, from_attributes=True)
         return response_schema
 
     async def get_user_by_id(self, user_id: uuid.UUID) -> UserTasksGetSchema:
@@ -290,35 +244,42 @@ class UserTaskService:
     async def delete_user_or_tasks(
         self,
         user_id: uuid.UUID,
-        task_ids: list[uuid.UUID] | None = None,
+        task_ids: set[uuid.UUID] | None = None,
     ) -> DeletionResponseSchema:
         existing_user = await self._get_and_validate_user(user_id=user_id)
         async with self.uow:
             if not task_ids:
                 existing_user.is_deleted = True
-                for task in existing_user.tasks:
-                    task.is_deleted = True
-            else:
-                requested_task_ids = set(task_ids)
-                existing_task_ids = {task.id for task in existing_user.tasks}
-                missing_task_ids = requested_task_ids - existing_task_ids
-                if missing_task_ids:
-                    missing_str = ", ".join(str(tid) for tid in sorted(missing_task_ids))
-                    raise ObjectNotFoundException(
-                        detail=f"Задачи с ID [{missing_str}] не найдены у пользователя {user_id}"
-                    )
-                for task in existing_user.tasks:
-                    if task.id in requested_task_ids:
-                        task.is_deleted = True
-        self.logger.info(
-            "Deletion completed successfully",
-            extra={
-                "user_id": str(user_id),
-                "deleted_entities": "user_and_all_tasks" if not task_ids else "specific_tasks",
-            },
-        )
+                self._mark_tasks_as_deleted(existing_user.tasks)
+                await self.uow.session.flush()
+                return DeletionResponseSchema(
+                    status="success",
+                    message="Пользователь и все его задачи удалены"
+                )
+            existing_task_ids = {task.id for task in existing_user.tasks}
+            missing_task_ids = [
+                task_id
+                for task_id in task_ids
+                if task_id not in existing_task_ids
+            ]
+            if missing_task_ids:
+                missing_str = ", ".join(str(tid) for tid in sorted(missing_task_ids))
+                raise ObjectNotFoundException(
+                    detail=f"Задачи с ID [{missing_str}] не найдены у пользователя {user_id}"
+                )
+            self._mark_tasks_as_deleted(existing_user.tasks, task_ids)
+            await self.uow.session.flush()
 
-        return DeletionResponseSchema(
-            status="success",
-            message="Данные успешно удалены"
-        )
+            return DeletionResponseSchema(
+                status="success",
+                message=f"Удалено задач: {len(task_ids)}"
+            )
+
+    def _mark_tasks_as_deleted(
+        self,
+        tasks: list[TaskORM],
+        task_ids_to_delete: set[uuid.UUID] | None = None
+    ) -> None:
+        for task in tasks:
+            if task_ids_to_delete is None or task.id in task_ids_to_delete:
+                task.is_deleted = True
