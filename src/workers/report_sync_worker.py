@@ -5,10 +5,11 @@ from typing import TYPE_CHECKING
 import circuitbreaker
 
 from src.clients.report_service_client import ReportServiceClient
+from src.config import settings
 from src.database.unit_of_work import UnitOfWork
 from src.exceptions import ExternalServiceUnavailableException
 from src.exceptions.external_service import ExternalServiceClientException
-from src.mappers.task_mapper import to_task_api_request
+from src.mappers.task_mapper import to_tasks_api_request
 from src.repositories.task_rep import TasksRepository
 from src.schemas.sync_worker_schemas import SyncStatsSchema
 from src.schemas.tasks_schemas import ReportStatus, TaskAPIResponseSchema
@@ -52,20 +53,27 @@ class ReportSyncWorker:
                 cursor_id = pending_tasks[-1].id
 
             except ExternalServiceClientException as e:
+                skipped_ids = [str(task.id) for task in pending_tasks]
                 self.logger.warning(
-                    "Batch skipped due to data mismatch, continuing to next batch",
-                    extra={"batch_number": batch_count + 1, "error": str(e)},
+                    "Batch skipped due to data mismatch, continuing to next batch.",
+                    extra={
+                        "batch_number": batch_count + 1,
+                        "error": str(e),
+                        "skipped_task_ids": skipped_ids,
+                    },
                 )
+
                 batch_count += 1
+                cursor_id = pending_tasks[-1].id
                 continue
             except ExternalServiceUnavailableException as e:
-                self.logger.error(
+                self.logger.warning(
                     "External service unavailable, stopping sync run",
                     extra={"stats": stats.model_dump(), "error": str(e)},
                 )
                 raise
             except circuitbreaker.CircuitBreakerError as e:
-                self.logger.error(
+                self.logger.warning(
                     "Circuit breaker is OPEN - service temporarily unavailable",
                     extra={
                         "stats": stats.model_dump(),
@@ -102,7 +110,7 @@ class ReportSyncWorker:
         self,
         tasks: list[TaskORM],
     ) -> dict[uuid.UUID, TaskAPIResponseSchema]:
-        requests = [to_task_api_request(task) for task in tasks]
+        requests = to_tasks_api_request(tasks)
         reports = await self.report_client.post_reports_batch(requests)
         return {r.task_id: r for r in reports}
 
@@ -111,11 +119,23 @@ class ReportSyncWorker:
         tasks: list[TaskORM],
         reports_by_id: dict[uuid.UUID, TaskAPIResponseSchema],
     ) -> int:
+        max_attempts = settings.MAX_REPORT_ATTEMPTS
         updated_count = 0
         skipped_task_ids = []
         for task in tasks:
             report = reports_by_id.get(task.id)
             if report is None:
+                task.attempts += 1
+                if task.attempts >= max_attempts:
+                    task.report_status = ReportStatus.FAILED.value
+                    self.logger.warning(
+                        "Task marked as FAILED: max attempts exceeded",
+                        extra={
+                            "task_id": str(task.id),
+                            "attempts": task.attempts,
+                            "max_attempts": max_attempts,
+                        },
+                    )
                 skipped_task_ids.append(str(task.id))
                 continue
 

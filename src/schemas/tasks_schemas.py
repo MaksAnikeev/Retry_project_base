@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class ReportStatus(str, Enum):
@@ -49,7 +49,7 @@ class TaskUpdateSchema(BaseModel):
 
 
 class TaskAPIRequestSchema(TaskBase):
-    task_id: uuid.UUID = Field(..., description="ИД задачи")
+    task_id: uuid.UUID = Field(..., description="ИД задачи", validation_alias="id")
     user_id: uuid.UUID = Field(..., description="ИД пользователя")
 
 

@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.clients.report_service_client import create_report_client
 from src.config import settings
-from src.repositories.task_rep import TasksRepository
 from src.database.unit_of_work import UnitOfWork
+from src.repositories.task_rep import TasksRepository
 from src.schemas.sync_worker_schemas import SyncStatsSchema
 from src.workers.celery_app import celery_instance
 from src.workers.report_sync_worker import ReportSyncWorker
@@ -20,20 +20,14 @@ logger = logging.getLogger(__name__)
     reject_on_worker_lost=True,
 )
 def sync_reports_task(self) -> dict:
-    try:
-        stats = asyncio.run(_run_worker())
-        return stats.model_dump()
-
-    except Exception as e:
-        logger.error(
-            "sync_reports_task failed",
-            extra={"error": str(e)},
-            exc_info=True,
-        )
-        raise
+    stats = asyncio.run(_run_worker())
+    return stats.model_dump()
 
 
 async def _run_worker() -> SyncStatsSchema:
+    engine = None
+    session = None
+    report_client = None
     try:
         engine = create_async_engine(
             settings.DATABASE_URL_asyncpg,

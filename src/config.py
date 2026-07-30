@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # --------------------WORKER-------------------------
     BATCH_SIZE: int
     MAX_BATCH_COUNT: int
+    MAX_REPORT_ATTEMPTS: int
 
     @property
     def DATABASE_URL_asyncpg(self) -> str:

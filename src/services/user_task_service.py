@@ -14,8 +14,8 @@ from src.exceptions import (
 from src.mappers.task_mapper import (
     add_report_to_task,
     split_tasks_by_type,
-    to_task_api_request,
-    to_task_orm,
+    to_tasks_api_request,
+    to_tasks_orms,
     update_tasks_fields,
 )
 from src.mappers.user_mapper import to_user_orm, update_user_fields
@@ -64,7 +64,7 @@ class UserTaskService:
                 detail=f"User with email {normalized_email} already exists"
             ) from None
 
-        new_tasks_orm = [to_task_orm(t) for t in user_data.tasks]
+        new_tasks_orm = to_tasks_orms(user_data.tasks)
         user_orm = await self.user_rep.get_one_or_none_with_relationship(id=user_id)
         user_orm.tasks = new_tasks_orm
         return user_orm, new_tasks_orm
@@ -73,7 +73,7 @@ class UserTaskService:
         self,
         tasks: list[TaskORM],
     ) -> dict[uuid.UUID, TaskAPIResponseSchema]:
-        requests = [to_task_api_request(task) for task in tasks]
+        requests = to_tasks_api_request(tasks)
         reports = await self.report_client.post_reports_batch(requests)
         return {r.task_id: r for r in reports}
 
@@ -92,7 +92,7 @@ class UserTaskService:
             self._enrich_tasks_with_reports(tasks, reports_by_id)
 
         except circuitbreaker.CircuitBreakerError as e:
-            self.logger.error(
+            self.logger.warning(
                 "Circuit breaker is OPEN - service temporarily unavailable",
                 extra={
                     "user_id": str(user_orm.id),
@@ -124,7 +124,7 @@ class UserTaskService:
             user_orm, new_tasks_orm = await self._create_user_and_base_tasks(user_data, new_email)
 
         self.logger.info(
-            "User and tasks created (status=PENDING)",
+            "User and base tasks saved to DB. Starting external report enrichment...",
             extra={
                 "user_id": str(user_orm.id),
                 "tasks_count": len(new_tasks_orm),

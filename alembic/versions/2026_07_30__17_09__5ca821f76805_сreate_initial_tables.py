@@ -1,8 +1,8 @@
 """сreate_initial_tables
 
-Revision ID: 1918eae122d5
+Revision ID: 5ca821f76805
 Revises:
-Create Date: 2026-07-03 17:13:56.079062
+Create Date: 2026-07-30 17:09:54.048155
 
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = "1918eae122d5"
+revision: str = "5ca821f76805"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -26,11 +26,11 @@ def upgrade() -> None:
         sa.Column("username", sa.String(), nullable=True),
         sa.Column("email", sa.String(length=200), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False),
-        sa.Column("is_deleted", sa.Boolean(), nullable=False),
         sa.Column("hashed_password", sa.String(length=200), nullable=False),
         sa.Column(
             "id", sa.Uuid(), server_default=sa.text("gen_random_uuid()"), nullable=False
         ),
+        sa.Column("is_deleted", sa.Boolean(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -57,6 +57,13 @@ def upgrade() -> None:
             server_default="pending",
             nullable=False,
             comment="Статус отчёта: pending, completed, failed",
+        ),
+        sa.Column(
+            "attempts",
+            sa.Integer(),
+            server_default="0",
+            nullable=False,
+            comment="Количество попыток получения отчета",
         ),
         sa.Column(
             "id", sa.Uuid(), server_default=sa.text("gen_random_uuid()"), nullable=False

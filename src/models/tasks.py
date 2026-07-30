@@ -2,7 +2,7 @@ import typing
 import uuid
 from datetime import date
 
-from sqlalchemy import String, ForeignKey, Date, UniqueConstraint, Float
+from sqlalchemy import String, ForeignKey, Date, UniqueConstraint, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import Base
@@ -28,6 +28,13 @@ class TaskORM(Base):
         server_default="pending",
         nullable=False,
         comment="Статус отчёта: pending, completed, failed",
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        comment="Количество попыток получения отчета",
     )
 
     user: Mapped["UserORM"] = relationship("UserORM", back_populates="tasks")

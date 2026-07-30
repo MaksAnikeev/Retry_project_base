@@ -14,14 +14,16 @@ def to_task_orm(task: TaskRequestSchema) -> TaskORM:
     return TaskORM(**data)
 
 
+def to_tasks_orms(tasks: list[TaskRequestSchema]) -> list[TaskORM]:
+    return [to_task_orm(task) for task in tasks]
+
+
 def to_task_api_request(task: TaskORM) -> TaskAPIRequestSchema:
-    return TaskAPIRequestSchema(
-        task_id=task.id,
-        user_id=task.user_id,
-        title=task.title,
-        description=task.description,
-        finish_date=task.finish_date,
-    )
+    return TaskAPIRequestSchema.model_validate(task, from_attributes=True)
+
+
+def to_tasks_api_request(tasks: list[TaskORM]) -> list[TaskAPIRequestSchema]:
+    return [to_task_api_request(task) for task in tasks]
 
 
 def add_report_to_task(task: TaskORM, report: TaskAPIResponseSchema) -> None:
