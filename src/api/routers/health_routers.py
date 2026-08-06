@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
 from starlette.responses import JSONResponse
 
-from src.dependencies.dependencies import ReportClientDep
+from src.dependencies.dependencies_tasks import ReportClientDep
 from src.api.routers.health.utils import HealthDB, check_health
 from src.schemas.health_schemas import HealthStatus, LivenessResponse, ComponentStatus, ReadinessResponse
 

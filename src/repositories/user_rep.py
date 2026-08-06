@@ -1,8 +1,8 @@
 from datetime import datetime
 import uuid
-from typing import Any, Sequence
+from typing import Any
 
-from sqlalchemy import select, update, inspect, text
+from sqlalchemy import select, inspect, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
@@ -90,3 +90,20 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
         await self.session.flush()
         await self.session.refresh(user_orm, attribute_names=['tasks'])
         return user_orm
+
+    async def get_existing_user_ids(
+        self,
+        user_ids: set[uuid.UUID],
+    ) -> set[uuid.UUID]:
+        if not user_ids:
+            return set()
+
+        stmt = (
+            select(self.model.id)
+            .where(
+                self.model.id.in_(user_ids),
+                self.model.is_deleted == False,
+            )
+        )
+        result = await self.session.execute(stmt)
+        return set(result.scalars().all())

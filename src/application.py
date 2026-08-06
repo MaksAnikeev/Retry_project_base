@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from src.api.routers.user_task_routers import router as user_task_router
 from src.api.routers.health_routers import router as health_router
+from src.api.routers.order_routers import router as order_router
 from src.clients.report_service_client import create_report_client
 from src.config import settings
 from src.exceptions import BaseDomainException
@@ -22,6 +23,7 @@ setup_logging(level=settings.LOG_LEVEL)
 def _register_routers(app: FastAPI) -> None:
     app.include_router(user_task_router)
     app.include_router(health_router)
+    app.include_router(order_router)
 
 
 def _register_middlewares(app: FastAPI) -> None:

@@ -47,6 +47,18 @@ class Settings(BaseSettings):
     MAX_BATCH_COUNT: int
     MAX_REPORT_ATTEMPTS: int
 
+    # --------------------OUTBOX_WORKER-------------------------
+    OUTBOX_BATCH_SIZE: int
+    OUTBOX_MAX_BATCH_COUNT: int
+    OUTBOX_MAX_ATTEMPTS: int
+    OUTBOX_SENT_RETRIES: int
+    ORDER_TOPIC: str
+    ORDER_AGGREGATE_TYPE: str
+    ORDER_EVENT_TYPE: str
+
+    # --------------------KAFKA-------------------------
+    KAFKA_BOOTSTRAP_SERVERS: str
+
     @property
     def DATABASE_URL_asyncpg(self) -> str:
         user = quote_plus(self.DB_USER)

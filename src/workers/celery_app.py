@@ -26,4 +26,8 @@ celery_instance.conf.beat_schedule = {
         "task": "src.workers.tasks.sync_reports_task",
         "schedule": crontab(minute=0, hour="*/3"),
     },
+    "sync-outbox_order": {
+        "task": "src.workers.tasks.send_outbox_order",
+        "schedule": crontab(minute="*/1"),
+    },
 }
