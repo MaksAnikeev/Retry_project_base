@@ -26,15 +26,23 @@ def upgrade() -> None:
         "outbox_messages",
         sa.Column("topic", sa.String(length=200), nullable=False),
         sa.Column("aggregate_type", sa.String(length=100), nullable=False),
-        sa.Column("aggregate_id", sa.Uuid(), nullable=True),
+        sa.Column("aggregate_id", sa.Uuid(), nullable=False),
         sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("event_type", sa.String(length=100), nullable=False),
         sa.Column(
             "status",
-            sa.String(length=50),
+            sa.Enum(
+                "pending",
+                "processing",
+                "completed",
+                "failed",
+                name="outbox_status",
+                native_enum=False,
+                length=50,
+            ),
             server_default="pending",
             nullable=False,
-            comment="Статус сообщения: pending, completed, failed",
+            comment="Статус сообщения: pending, processing, completed, failed",
         ),
         sa.Column(
             "attempts", sa.Integer(), server_default=sa.text("0"), nullable=False
@@ -64,12 +72,6 @@ def upgrade() -> None:
         ),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        op.f("ix_outbox_messages_aggregate_id"),
-        "outbox_messages",
-        ["aggregate_id"],
-        unique=False,
     )
     op.create_index(
         "ix_outbox_status_created_at_id",
@@ -115,7 +117,6 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -167,6 +168,5 @@ def downgrade() -> None:
     op.drop_table("orders")
     op.drop_table("users")
     op.drop_index("ix_outbox_status_created_at_id", table_name="outbox_messages")
-    op.drop_index(op.f("ix_outbox_messages_aggregate_id"), table_name="outbox_messages")
     op.drop_table("outbox_messages")
     # ### end Alembic commands ###

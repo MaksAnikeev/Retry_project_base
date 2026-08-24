@@ -88,22 +88,13 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
 
     async def save_and_refresh(self, user_orm: UserORM) -> UserORM:
         await self.session.flush()
-        await self.session.refresh(user_orm, attribute_names=['tasks'])
-        return user_orm
-
-    async def get_existing_user_ids(
-        self,
-        user_ids: set[uuid.UUID],
-    ) -> set[uuid.UUID]:
-        if not user_ids:
-            return set()
-
-        stmt = (
-            select(self.model.id)
-            .where(
-                self.model.id.in_(user_ids),
-                self.model.is_deleted == False,
-            )
+        await self.session.refresh(
+            user_orm,
+            attribute_names=["updated_at", "created_at"],
         )
-        result = await self.session.execute(stmt)
-        return set(result.scalars().all())
+        for task in user_orm.tasks:
+            await self.session.refresh(
+                task,
+                attribute_names=["updated_at", "created_at", "id"],
+            )
+        return user_orm

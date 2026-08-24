@@ -71,3 +71,7 @@ class OrderGetSchema(OrderBase):
     is_deleted: bool = Field(..., description="Пользователь удален")
     created_at: datetime = Field(..., description="Дата регистрации пользователя")
     updated_at: datetime | None = Field(None, description="Дата обновления информации о пользователе")
+
+
+class OrderOutboxSchema(OrderBase):
+    id: uuid.UUID

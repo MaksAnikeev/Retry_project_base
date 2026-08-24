@@ -14,6 +14,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models import Base
+from src.schemas.outbox_schemas import OutboxStatus
+from sqlalchemy import Enum as SAEnum
 
 
 class OutboxORM(Base):
@@ -29,8 +31,7 @@ class OutboxORM(Base):
     )
     aggregate_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
-        nullable=True,
-        index=True,
+        nullable=False,
     )
     payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
@@ -40,12 +41,18 @@ class OutboxORM(Base):
         String(100),
         nullable=False,
     )
-    status: Mapped[str] = mapped_column(
-        String(50),
-        default="pending",
-        server_default="pending",
+    status: Mapped[OutboxStatus] = mapped_column(
+        SAEnum(
+            OutboxStatus,
+            name="outbox_status",
+            values_callable=lambda x: [e.value for e in x],
+            native_enum=False,
+            length=50,
+        ),
+        default=OutboxStatus.PENDING,
+        server_default=OutboxStatus.PENDING.value,
         nullable=False,
-        comment="Статус сообщения: pending, completed, failed",
+        comment="Статус сообщения",
     )
     attempts: Mapped[int] = mapped_column(
         Integer,

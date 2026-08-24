@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Self
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator, field_validator
 
 from src.exceptions import AtLeastOneFieldRequiredException, EmptyRequestBodyException
 from src.schemas.tasks_schemas import (
@@ -36,6 +36,11 @@ class UniqueTaskTitlesValidatorMixin:
 class UserBase(BaseModel):
     email: EmailStr = Field(..., description="Адрес эл.почты")
     username: str | None = Field(None, description="Имя пользователя")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.lower().strip()
 
 
 class UserRequestSchema(UserBase, UniqueTaskTitlesValidatorMixin):
@@ -132,6 +137,13 @@ class UserUpdateWithTasksSchema(BaseModel, UniqueTaskTitlesValidatorMixin):
         if all(value is None or value == "" for value in self.model_dump().values()):
             raise AtLeastOneFieldRequiredException("At least one field must be filled in")
         return self
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.lower().strip()
 
 example_update_user_task = {
     "1": {

@@ -50,3 +50,8 @@ class BaseRepository(Generic[Model, Schema]):
     async def save_orm_object(self, obj: Any) -> Model:
         self.session.add(obj)
         return obj
+
+    async def add_many(self, objects: list[Model]) -> list[Model]:
+        self.session.add_all(objects)
+        await self.session.flush()
+        return objects

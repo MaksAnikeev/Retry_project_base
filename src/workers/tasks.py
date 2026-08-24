@@ -3,10 +3,11 @@ import logging
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from src.application import kafka_lifespan
 from src.clients.report_service_client import create_report_client
 from src.config import settings
 from src.database.unit_of_work import UnitOfWork
-from src.kafka.kafka_producer import KafkaProducerClient
+from src.kafka.config import kafka_producer_config
 from src.repositories.outbox_rep import OutboxRepository
 from src.repositories.task_rep import TasksRepository
 from src.schemas.sync_worker_schemas import SyncStatsSchema
@@ -80,8 +81,10 @@ async def _run_outbox_worker() -> SyncStatsSchema:
         session = session_factory()
         uow = UnitOfWork(session=session)
         outbox_repo = OutboxRepository(session=session)
-        kafka_producer = KafkaProducerClient(bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS)
-        async with kafka_producer.lifespan():
+        async with kafka_lifespan(
+            bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+            config=kafka_producer_config
+        ) as kafka_producer:
             worker = OutboxOrderWorker(
                 outbox_repo=outbox_repo,
                 kafka_producer=kafka_producer,

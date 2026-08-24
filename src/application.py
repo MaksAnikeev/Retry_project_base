@@ -1,3 +1,5 @@
+from typing import AsyncIterator
+
 from starlette.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -11,6 +13,8 @@ from src.clients.report_service_client import create_report_client
 from src.config import settings
 from src.exceptions import BaseDomainException
 from src.exceptions.handlers.handlers import domain_exception_handler
+from src.kafka.config import kafka_producer_config, KafkaProducerConfig
+from src.kafka.kafka_producer import KafkaProducerClient
 from src.utils.logging_config import setup_logging
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -68,3 +72,32 @@ def get_app() -> FastAPI:
     _register_exception_handlers(app)
 
     return app
+
+
+@asynccontextmanager
+async def kafka_lifespan(
+    bootstrap_servers: str,
+    config: KafkaProducerConfig,
+) -> AsyncIterator[KafkaProducerClient]:
+
+    producer = KafkaProducerClient(
+        bootstrap_servers=bootstrap_servers,
+        config=config,
+    )
+
+    try:
+        await producer.start()
+    except Exception as e:
+        logging.error(
+            "Failed to start Kafka producer",
+            extra={
+                "bootstrap_servers": producer.bootstrap_servers,
+                "error": str(e),
+            },
+        )
+        raise
+
+    try:
+        yield producer
+    finally:
+        await producer.stop()

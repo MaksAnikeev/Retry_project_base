@@ -118,10 +118,9 @@ class UserTaskService:
             pass
 
     async def create_user_with_tasks(self, user_data: UserRequestSchema) -> UserTasksGetSchema:
-        new_email = str(user_data.email).lower().strip()
         async with self.uow:
-            await self.user_rep.acquire_email_lock(new_email)
-            user_orm, new_tasks_orm = await self._create_user_and_base_tasks(user_data, new_email)
+            await self.user_rep.acquire_email_lock(str(user_data.email))
+            user_orm, new_tasks_orm = await self._create_user_and_base_tasks(user_data, str(user_data.email))
 
         self.logger.info(
             "User and base tasks saved to DB. Starting external report enrichment...",

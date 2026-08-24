@@ -53,8 +53,6 @@ class Settings(BaseSettings):
     OUTBOX_MAX_ATTEMPTS: int
     OUTBOX_SENT_RETRIES: int
     ORDER_TOPIC: str
-    ORDER_AGGREGATE_TYPE: str
-    ORDER_EVENT_TYPE: str
 
     # --------------------KAFKA-------------------------
     KAFKA_BOOTSTRAP_SERVERS: str
