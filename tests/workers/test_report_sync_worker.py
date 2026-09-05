@@ -25,7 +25,7 @@ async def mock_post_reports_batch_for_worker(requests):
     ]
 
 async def test_report_sync_worker(
-    setup_db,
+    refresh_db,
     ac: AsyncClient,
     async_session_factory_null_pull,
 ):

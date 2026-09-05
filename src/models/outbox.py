@@ -64,10 +64,20 @@ class OutboxORM(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        nullable=True,
+        index=True,
+    )
     sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         comment="Когда сообщение было успешно отправлено в Kafka",
+    )
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Когда воркер начал обработку аутбокс сообщения"
     )
     last_error: Mapped[str | None] = mapped_column(
         String(2000),

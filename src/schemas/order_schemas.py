@@ -1,7 +1,21 @@
 import uuid
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, Field
+
+from src.schemas.kafka_schemas import BaseKafkaMessageSchema, BaseKafkaHeadersSchema
+
+
+class OrderEventType(str, Enum):
+    ORDER_CREATED = "OrderCreated"
+    ORDER_PAID = "OrderPaid"
+    ORDER_SHIPPED = "OrderShipped"
+    ORDER_CANCELLED = "OrderCancelled"
+
+
+class OrderAggregateType(str, Enum):
+    ORDER = "Order"
 
 
 class OrderBase(BaseModel):
@@ -75,3 +89,17 @@ class OrderGetSchema(OrderBase):
 
 class OrderOutboxSchema(OrderBase):
     id: uuid.UUID
+
+
+class OrderHeadersSchema(BaseKafkaHeadersSchema):
+    event_type: str
+    aggregate_type: str = "Order"
+    event_id: str | None = None
+    correlation_id: str | None = None
+    content_type: str = "application/json"
+
+
+class OrderCreateMessageSchema(BaseKafkaMessageSchema):
+    payload: OrderOutboxSchema
+    headers: OrderHeadersSchema
+

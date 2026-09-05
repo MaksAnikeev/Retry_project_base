@@ -6,9 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 Model = TypeVar("Model")
-Schema = TypeVar("Schema")
 
-class BaseRepository(Generic[Model, Schema]):
+class BaseRepository(Generic[Model]):
     model: Type[Model]
     session: AsyncSession
 

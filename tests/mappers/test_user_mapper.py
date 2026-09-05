@@ -48,7 +48,7 @@ def test_update_user_fields_does_not_rewrite_null_fields():
     assert user.tasks is not None
 
 
-def test_produces_different_hashes_for_same_password():
+def test_produces_different_hashes_for_same_password(refresh_db):
     user1 = Mock()
     user1.id = uuid4()
 

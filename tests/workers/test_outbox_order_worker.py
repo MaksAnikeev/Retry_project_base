@@ -26,7 +26,7 @@ def make_mock_send_message():
 
 
 async def test_outbox_order_worker(
-    setup_db,
+    refresh_db,
     ac: AsyncClient,
     async_session_factory_null_pull,
 ):
@@ -70,6 +70,7 @@ async def test_outbox_order_worker(
             outbox_batch_size=settings.OUTBOX_BATCH_SIZE,
             outbox_max_batch_count=settings.OUTBOX_MAX_BATCH_COUNT,
             outbox_max_attempts=settings.OUTBOX_MAX_ATTEMPTS,
+            backoff_base_seconds=settings.BACKOFF_BASE_SECOND
         )
         try:
             stats = await worker.run()
@@ -134,6 +135,7 @@ async def test_outbox_max_attempts_marks_failed(
                 outbox_batch_size=settings.OUTBOX_BATCH_SIZE,
                 outbox_max_batch_count=settings.OUTBOX_MAX_BATCH_COUNT,
                 outbox_max_attempts=settings.OUTBOX_MAX_ATTEMPTS,
+                backoff_base_seconds=settings.BACKOFF_BASE_SECOND
             )
             await worker.run()
 

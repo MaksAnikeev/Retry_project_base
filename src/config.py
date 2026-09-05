@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     OUTBOX_MAX_BATCH_COUNT: int
     OUTBOX_MAX_ATTEMPTS: int
     OUTBOX_SENT_RETRIES: int
+    BACKOFF_BASE_SECOND: int
     ORDER_TOPIC: str
 
     # --------------------KAFKA-------------------------

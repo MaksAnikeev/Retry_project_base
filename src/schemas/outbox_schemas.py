@@ -1,4 +1,9 @@
+from datetime import datetime
 from enum import Enum
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class OutboxStatus(str, Enum):
@@ -8,12 +13,14 @@ class OutboxStatus(str, Enum):
     FAILED = "failed"
 
 
-class OrderEventType(str, Enum):
-    ORDER_CREATED = "OrderCreated"
-    ORDER_PAID = "OrderPaid"
-    ORDER_SHIPPED = "OrderShipped"
-    ORDER_CANCELLED = "OrderCancelled"
-
-
-class OrderAggregateType(str, Enum):
-    ORDER = "Order"
+class OutboxClaimedSchema(BaseModel):
+    id: UUID
+    topic: str
+    event_type: str
+    aggregate_type: str
+    aggregate_id: UUID
+    payload: dict[str, Any]
+    attempt_id: UUID
+    attempts: int
+    created_at: datetime
+    processing_started_at: datetime | None = None

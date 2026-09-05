@@ -92,6 +92,7 @@ async def _run_outbox_worker() -> SyncStatsSchema:
                 outbox_batch_size=settings.OUTBOX_BATCH_SIZE,
                 outbox_max_batch_count=settings.OUTBOX_MAX_BATCH_COUNT,
                 outbox_max_attempts=settings.OUTBOX_MAX_ATTEMPTS,
+                backoff_base_seconds=settings.BACKOFF_BASE_SECOND
             )
             return await worker.run()
     finally:

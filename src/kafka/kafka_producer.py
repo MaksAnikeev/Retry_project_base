@@ -1,13 +1,12 @@
 import asyncio
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import Any
 
 from aiokafka import AIOKafkaProducer
 
 from src.exceptions import KafkaProducerNotStartedError
 from src.kafka.config import KafkaProducerConfig
+from src.mappers.kafka_mapper import headers_to_kafka_format, payload_to_bytes
+from src.schemas.kafka_schemas import BaseKafkaMessageSchema
 
 
 class KafkaProducerClient:
@@ -22,33 +21,28 @@ class KafkaProducerClient:
         self.logger = logging.getLogger(self.__class__.__name__)
         self._producer: AIOKafkaProducer | None = None
         self._lock = asyncio.Lock()
-
-    def _get_producer(self) -> AIOKafkaProducer:
-        if self._producer is None:
-            raise KafkaProducerNotStartedError(
-                detail=f"Kafka producer for {self.bootstrap_servers} is not started"
-            )
-        return self._producer
+        self._started = False
 
     async def start(self) -> None:
-        if self._producer is not None:
+        if self._started:
             return
 
         async with self._lock:
-            if self._producer is not None:
+            if self._started:
                 return
 
             producer_config = self.config.to_producer()
-
-            self._producer = AIOKafkaProducer(
+            producer = AIOKafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
                 **producer_config
             )
             try:
-                await self._producer.start()
+                await producer.start()
             except Exception:
-                self._producer = None
                 raise
+
+            self._producer = producer
+            self._started = True
 
             self.logger.info(
                 "Kafka producer started",
@@ -61,32 +55,32 @@ class KafkaProducerClient:
                 return
             producer = self._producer
             self._producer = None
-
-            try:
-                await producer.stop()
-                self.logger.info("Kafka producer stopped")
-            except Exception as e:
-                self.logger.warning(
-                    "Error while stopping Kafka producer",
-                    extra={"error": str(e)},
-                )
+            self._started = False
+        try:
+            await producer.stop()
+            self.logger.info("Kafka producer stopped")
+        except Exception as e:
+            self.logger.warning(
+                "Error while stopping Kafka producer",
+                extra={"error": str(e)},
+            )
 
     async def send_message(
         self,
-        topic: str,
-        value: dict[str, Any],
-        key: str | None = None,
-        headers: dict[str, str] | None = None,
+        message: BaseKafkaMessageSchema
     ) -> None:
-        _producer = self._get_producer()
+        async with self._lock:
+            if not self._started or self._producer is None:
+                raise KafkaProducerNotStartedError(
+                    "Kafka producer is not started. Call start() first."
+                )
+            producer = self._producer
+        kafka_value = payload_to_bytes(message.payload)
+        kafka_headers = headers_to_kafka_format(message.headers)
 
-        kafka_headers = None
-        if headers:
-            kafka_headers = [(k, v.encode("utf-8")) for k, v in headers.items()]
-
-        await self._producer.send_and_wait(
-            topic=topic,
-            value=value,
-            key=key,
+        await producer.send_and_wait(
+            topic=message.topic,
+            value=kafka_value,
+            key=message.key,
             headers=kafka_headers,
         )

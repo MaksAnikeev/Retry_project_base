@@ -9,7 +9,7 @@ from src.schemas.tasks_schemas import ReportStatus, TaskUpdateSchema
 from src.schemas.users_schemas import UserUpdateWithTasksSchema
 
 
-def test_add_report_to_task():
+def test_add_report_to_task(refresh_db):
     task = Mock()
     report = Mock()
     report.complexity = "hard"

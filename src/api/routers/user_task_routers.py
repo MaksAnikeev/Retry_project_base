@@ -33,7 +33,7 @@ async def get_user(
 
 
 @router.post("", summary="регистрация пользователя и добавление задач")
-async def add_user_tasks(
+async def create_user_tasks(
     service: UserTaskServiceDep,
     user_data: UserRequestSchema = Body(openapi_examples=example_add_user_task),
 ) -> UserTasksGetSchema:
@@ -41,7 +41,7 @@ async def add_user_tasks(
 
 
 @router.patch("", summary="Изменить информацию по пользователю, добавить или изменить его задачи")
-async def edit_user_tasks(
+async def update_user_tasks(
     service: UserTaskServiceDep,
     update_data: UserUpdateWithTasksSchema = Body(openapi_examples=example_update_user_task),
 ) -> UserTasksGetSchema:

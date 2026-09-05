@@ -13,8 +13,8 @@ from src.dependencies.dependencies_tasks import get_report_client
 from src.models import *  # noqa
 from src.repositories.order_rep import OrderRepository
 from src.repositories.user_rep import UsersRepository
-from tests.data_to_tests.orders import get_orders_data
-from tests.data_to_tests.users_tasks import get_users_with_tasks_data
+from tests.fixtures.orders import get_orders_data
+from tests.fixtures.users_tasks import get_users_with_tasks_data
 
 app = get_app()
 
@@ -96,3 +96,22 @@ async def ac() -> AsyncGenerator[AsyncClient, None]:
     ) as ac:
         yield ac
 
+
+@pytest.fixture()
+async def refresh_db(async_engine_null_pull, async_session_factory_null_pull):
+    from sqlalchemy import delete
+    async with async_engine_null_pull.begin() as conn:
+        await conn.execute(delete(OutboxORM))
+        await conn.execute(delete(TaskORM))
+        await conn.execute(delete(OrderORM))
+        await conn.execute(delete(UserORM))
+    async with async_session_factory_null_pull() as session:
+        user_rep = UsersRepository(session=session)
+        users_data = await get_users_with_tasks_data()
+        await user_rep.add_many(users_data)
+        await session.commit()
+        order_rep = OrderRepository(session=session)
+        orders_data = await get_orders_data()
+        await order_rep.add_many(orders_data)
+        await session.commit()
+    yield

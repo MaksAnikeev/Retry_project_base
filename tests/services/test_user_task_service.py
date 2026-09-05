@@ -21,7 +21,8 @@ from src.services.user_task_service import UserTaskService
 )
 async def test__validate_tasks_update_error(
     task_id_existed, task_id_corrected, error,
-    async_session_factory_null_pull
+    async_session_factory_null_pull,
+    refresh_db
 ):
     id1, id2 = uuid4(), uuid4()
     task1, task2 = Mock(), Mock()

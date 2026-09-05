@@ -9,9 +9,6 @@ class KafkaProducerConfig(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    value_serializer: Callable = Field(
-        default=lambda v: json.dumps(v).encode("utf-8"),
-    )
     key_serializer: Callable = Field(
         default=lambda k: k.encode("utf-8") if k else None,
     )

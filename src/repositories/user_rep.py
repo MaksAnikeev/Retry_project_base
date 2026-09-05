@@ -8,10 +8,10 @@ from sqlalchemy.orm import selectinload
 
 from src.models import UserORM
 from src.repositories.base import BaseRepository
-from src.schemas.users_schemas import UserGetSchema, UserRequestSchema
+from src.schemas.users_schemas import UserRequestSchema
 
 
-class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
+class UsersRepository(BaseRepository[UserORM]):
     model = UserORM
 
     async def get_one_or_none_with_relationship(self, **filters: Any) -> UserORM | None:

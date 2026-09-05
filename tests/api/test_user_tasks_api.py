@@ -52,7 +52,8 @@ async def mock_circuit_breaker_open(self, tasks):
     ],
 )
 async def test_add_user_tasks(
-    email, title, status_code, ac: AsyncClient
+    email, title, status_code,
+    ac: AsyncClient,
 ):
     payload = {
         "email": email,

@@ -1,7 +1,7 @@
 import logging
 
 from src.database.unit_of_work import UnitOfWork
-from src.mappers.order_mapper import to_orders_orm
+from src.mappers.order_mapper import to_orders_orm, to_orders_schema
 from src.mappers.outbox_mapper import to_order_created_outboxes
 from src.repositories.order_rep import OrderRepository
 from src.schemas.order_schemas import OrderGetSchema, OrderRequestSchema
@@ -31,4 +31,4 @@ class OrderService:
             orders_orm = await self.order_repo.add_many(orders_orm)
             outboxes_orm = to_order_created_outboxes(orders_orm)
             await self.outbox_service.publish_events(outboxes_orm)
-        return [OrderGetSchema.model_validate(order_orm, from_attributes=True) for order_orm in orders_orm]
+        return to_orders_schema(orders_orm)

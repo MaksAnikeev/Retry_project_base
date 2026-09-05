@@ -7,7 +7,7 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
 @router.post("", summary="создание заказа")
-async def add_orders(
+async def create_orders(
     service: OrderServiceDep,
     order_data: list[OrderRequestSchema] = Body(openapi_examples=example_add_orders),
 ) -> list[OrderGetSchema]:

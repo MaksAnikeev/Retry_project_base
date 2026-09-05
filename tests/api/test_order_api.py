@@ -5,7 +5,7 @@ from src.models import OrderORM, OutboxORM
 
 
 async def test_add_orders(
-    setup_db,
+    refresh_db,
     async_session_factory_null_pull,
     ac: AsyncClient,
 ):
