@@ -1,19 +1,17 @@
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from src.database.db import get_session
+from src.clients.report_service_client import ReportServiceClient
+
+from src.database.db import SessionDep
+from src.dependencies.dependencies_uow import UowDep
 from src.repositories.task_rep import TasksRepository
-from src.database.unit_of_work import UnitOfWork
 from src.repositories.user_rep import UsersRepository
 from src.schemas.pagination_schema import PaginationParamsSchema
 from src.services.user_task_service import UserTaskService
-from src.clients.report_service_client import ReportServiceClient
 
-
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 def get_task_rep(session: SessionDep) -> TasksRepository:
     return TasksRepository(session=session)
@@ -34,11 +32,6 @@ def get_report_client(request: Request) -> ReportServiceClient:
     return client
 
 ReportClientDep = Annotated[ReportServiceClient, Depends(get_report_client)]
-
-def get_uow(session: SessionDep) -> UnitOfWork:
-    return UnitOfWork(session=session)
-
-UowDep = Annotated[UnitOfWork, Depends(get_uow)]
 
 
 def get_user_task_service(

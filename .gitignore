@@ -158,9 +158,5 @@ cython_debug/
 media
 src/static/*
 !src/static/**/.gitkeep
-async_load_testing
-logs
 *.json
-!tests/data_to_tests/mock_hotels.json
-!tests/data_to_tests/mock_rooms.json
 "docker images/"

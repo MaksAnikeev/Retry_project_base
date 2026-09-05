@@ -1,17 +1,17 @@
 from datetime import datetime
 import uuid
-from typing import Any, Sequence
+from typing import Any
 
-from sqlalchemy import select, update, inspect, text
+from sqlalchemy import select, inspect, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
 from src.models import UserORM
 from src.repositories.base import BaseRepository
-from src.schemas.users_schemas import UserGetSchema, UserRequestSchema
+from src.schemas.users_schemas import UserRequestSchema
 
 
-class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
+class UsersRepository(BaseRepository[UserORM]):
     model = UserORM
 
     async def get_one_or_none_with_relationship(self, **filters: Any) -> UserORM | None:
@@ -88,5 +88,13 @@ class UsersRepository(BaseRepository[UserORM, UserGetSchema]):
 
     async def save_and_refresh(self, user_orm: UserORM) -> UserORM:
         await self.session.flush()
-        await self.session.refresh(user_orm, attribute_names=['tasks'])
+        await self.session.refresh(
+            user_orm,
+            attribute_names=["updated_at", "created_at"],
+        )
+        for task in user_orm.tasks:
+            await self.session.refresh(
+                task,
+                attribute_names=["updated_at", "created_at", "id"],
+            )
         return user_orm

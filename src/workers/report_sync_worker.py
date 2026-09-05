@@ -24,8 +24,8 @@ class ReportSyncWorker:
         task_repo: TasksRepository,
         report_client: ReportServiceClient,
         uow: UnitOfWork,
-        batch_size: int = 50,
-        max_batch_count: int = 3,
+        batch_size: int,
+        max_batch_count: int,
     ) -> None:
         self.task_repo = task_repo
         self.report_client = report_client

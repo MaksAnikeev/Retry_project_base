@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Body, Query
 
-from src.dependencies.dependencies import PaginationDep, UserTaskServiceDep
+from src.dependencies.dependencies_tasks import PaginationDep, UserTaskServiceDep
 from src.schemas.users_schemas import (
     UserRequestSchema,
     UsersTasksPaginatedResponse,
@@ -32,8 +32,8 @@ async def get_user(
     return await service.get_user_by_id(user_id=user_id)
 
 
-@router.post("/user_tasks", summary="регистрация пользователя и добавление задач")
-async def add_user_tasks(
+@router.post("", summary="регистрация пользователя и добавление задач")
+async def create_user_tasks(
     service: UserTaskServiceDep,
     user_data: UserRequestSchema = Body(openapi_examples=example_add_user_task),
 ) -> UserTasksGetSchema:
@@ -41,7 +41,7 @@ async def add_user_tasks(
 
 
 @router.patch("", summary="Изменить информацию по пользователю, добавить или изменить его задачи")
-async def edit_user_tasks(
+async def update_user_tasks(
     service: UserTaskServiceDep,
     update_data: UserUpdateWithTasksSchema = Body(openapi_examples=example_update_user_task),
 ) -> UserTasksGetSchema:
@@ -49,7 +49,7 @@ async def edit_user_tasks(
 
 
 @router.delete(
-    "/{user_id}",
+    "/users/{user_id}",
     summary="Удалить пользователя или его конкретные задачи"
 )
 async def delete_user_or_tasks(

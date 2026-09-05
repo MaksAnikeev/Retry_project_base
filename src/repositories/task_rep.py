@@ -4,10 +4,10 @@ from sqlalchemy import select
 
 from src.models import TaskORM
 from src.repositories.base import BaseRepository
-from src.schemas.tasks_schemas import ReportStatus, TaskGetSchema
+from src.schemas.tasks_schemas import ReportStatus
 
 
-class TasksRepository(BaseRepository[TaskORM, TaskGetSchema]):
+class TasksRepository(BaseRepository[TaskORM]):
     model = TaskORM
 
     async def get_tasks_pending_reports(
